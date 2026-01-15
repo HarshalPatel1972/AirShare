@@ -1,6 +1,14 @@
 <script lang="ts">
   import DeviceList from '$lib/components/DeviceList.svelte';
+  import GestureController from '$lib/components/GestureController.svelte';
+  import CursorOverlay from '$lib/components/CursorOverlay.svelte';
 </script>
+
+<!-- Global cursor overlay -->
+<CursorOverlay />
+
+<!-- Gesture detection (webcam preview in corner) -->
+<GestureController />
 
 <main class="container">
   <h1>🚀 AirShare</h1>
