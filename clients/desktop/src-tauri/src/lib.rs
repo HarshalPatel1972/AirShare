@@ -1,6 +1,16 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use tauri::Manager;
+use tauri::Emitter;
 use tauri_plugin_shell::ShellExt;
+use serde::{Deserialize, Serialize};
+
+/// Peer data received from Go sidecar
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Peer {
+    id: String,
+    ip: String,
+    name: String,
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -13,6 +23,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            // Get app handle for emitting events
+            let app_handle = app.handle().clone();
+
             // Spawn the Go sidecar on app launch
             let shell = app.shell();
             let sidecar_command = shell.sidecar("airshare-engine")
@@ -30,7 +43,30 @@ pub fn run() {
                     match event {
                         CommandEvent::Stdout(line) => {
                             let output = String::from_utf8_lossy(&line);
-                            println!("[Go Engine] {}", output);
+                            let output_str = output.trim();
+                            
+                            // Check if this is a peer discovery event
+                            if output_str.starts_with("[PEER_FOUND]") {
+                                // Extract the JSON part
+                                let json_str = output_str.trim_start_matches("[PEER_FOUND]").trim();
+                                
+                                // Parse the peer JSON
+                                match serde_json::from_str::<Peer>(json_str) {
+                                    Ok(peer) => {
+                                        println!("[Discovery] Found peer: {} at {}", peer.name, peer.ip);
+                                        
+                                        // Emit the event to the frontend
+                                        if let Err(e) = app_handle.emit("peer-discovered", &peer) {
+                                            eprintln!("[Error] Failed to emit peer-discovered: {}", e);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[Error] Failed to parse peer JSON: {} - {}", e, json_str);
+                                    }
+                                }
+                            } else {
+                                println!("[Go Engine] {}", output_str);
+                            }
                         }
                         CommandEvent::Stderr(line) => {
                             let output = String::from_utf8_lossy(&line);
