@@ -2,10 +2,15 @@
   import DeviceList from '$lib/components/DeviceList.svelte';
   import GestureController from '$lib/components/GestureController.svelte';
   import CursorOverlay from '$lib/components/CursorOverlay.svelte';
+  import FileGallery from '$lib/components/FileGallery.svelte';
+  import GhostHand from '$lib/components/GhostHand.svelte';
 </script>
 
 <!-- Global cursor overlay -->
 <CursorOverlay />
+
+<!-- Ghost hand for receiving files -->
+<GhostHand />
 
 <!-- Gesture detection (webcam preview in corner) -->
 <GestureController />
@@ -14,6 +19,7 @@
   <h1>🚀 AirShare</h1>
   <p class="subtitle">Share files instantly with nearby devices</p>
 
+  <FileGallery />
   <DeviceList />
 </main>
 

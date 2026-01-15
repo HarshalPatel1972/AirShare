@@ -4,17 +4,29 @@ use tauri::Emitter;
 use tauri_plugin_shell::ShellExt;
 use serde::{Deserialize, Serialize};
 
-/// Peer data received from Go sidecar
+/// Peer data received from Go sidecar (updated for grab state)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Peer {
     id: String,
     ip: String,
     name: String,
+    #[serde(rename = "isHolding", default)]
+    is_holding: bool,
+    #[serde(rename = "heldFile", default)]
+    held_file: String,
 }
 
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+async fn send_to_sidecar(command: String) -> Result<String, String> {
+    // For now, just log the command - the grab state is already broadcast via UDP
+    // In a future version, we could use stdin to communicate complex commands
+    println!("[Tauri] Command: {}", command);
+    Ok(format!("Logged: {}", command))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -47,15 +59,11 @@ pub fn run() {
                             
                             // Check if this is a peer discovery event
                             if output_str.starts_with("[PEER_FOUND]") {
-                                // Extract the JSON part
                                 let json_str = output_str.trim_start_matches("[PEER_FOUND]").trim();
                                 
-                                // Parse the peer JSON
                                 match serde_json::from_str::<Peer>(json_str) {
                                     Ok(peer) => {
                                         println!("[Discovery] Found peer: {} at {}", peer.name, peer.ip);
-                                        
-                                        // Emit the event to the frontend
                                         if let Err(e) = app_handle.emit("peer-discovered", &peer) {
                                             eprintln!("[Error] Failed to emit peer-discovered: {}", e);
                                         }
@@ -64,7 +72,31 @@ pub fn run() {
                                         eprintln!("[Error] Failed to parse peer JSON: {} - {}", e, json_str);
                                     }
                                 }
-                            } else {
+                            } 
+                            // Check if this is a grab update event
+                            else if output_str.starts_with("[GRAB_UPDATE]") {
+                                let json_str = output_str.trim_start_matches("[GRAB_UPDATE]").trim();
+                                
+                                match serde_json::from_str::<Peer>(json_str) {
+                                    Ok(peer) => {
+                                        println!("[Transfer] Grab update from {}: holding={}, file={}", 
+                                            peer.name, peer.is_holding, peer.held_file);
+                                        if let Err(e) = app_handle.emit("grab-update", &peer) {
+                                            eprintln!("[Error] Failed to emit grab-update: {}", e);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[Error] Failed to parse grab JSON: {} - {}", e, json_str);
+                                    }
+                                }
+                            }
+                            // Check for download complete
+                            else if output_str.starts_with("[DOWNLOAD_COMPLETE]") {
+                                let path = output_str.trim_start_matches("[DOWNLOAD_COMPLETE]").trim();
+                                println!("[Transfer] Download complete: {}", path);
+                                let _ = app_handle.emit("download-complete", path);
+                            }
+                            else {
                                 println!("[Go Engine] {}", output_str);
                             }
                         }
@@ -86,8 +118,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet, send_to_sidecar])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

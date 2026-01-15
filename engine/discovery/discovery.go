@@ -23,13 +23,18 @@ type BeaconPacket struct {
 	DeviceID    string `json:"deviceId"`
 	DeviceName  string `json:"deviceName"`
 	ServicePort int    `json:"servicePort"`
+	// Grab state for P2P transfer
+	IsHolding   bool   `json:"isHolding"`
+	HeldFile    string `json:"heldFile,omitempty"`
 }
 
 // Peer represents a discovered peer
 type Peer struct {
-	ID   string `json:"id"`
-	IP   string `json:"ip"`
-	Name string `json:"name"`
+	ID        string `json:"id"`
+	IP        string `json:"ip"`
+	Name      string `json:"name"`
+	IsHolding bool   `json:"isHolding"`
+	HeldFile  string `json:"heldFile,omitempty"`
 }
 
 // Discovery manages the UDP discovery protocol
@@ -39,6 +44,10 @@ type Discovery struct {
 	peers      map[string]*Peer
 	peersMu    sync.RWMutex
 	stopChan   chan struct{}
+	// Grab state
+	isHolding  bool
+	heldFile   string
+	grabMu     sync.RWMutex
 }
 
 // New creates a new Discovery instance
@@ -90,18 +99,6 @@ func (d *Discovery) startBeacon() {
 	}
 	defer conn.Close()
 
-	packet := BeaconPacket{
-		DeviceID:    d.deviceID,
-		DeviceName:  d.deviceName,
-		ServicePort: ServicePort,
-	}
-
-	data, err := json.Marshal(packet)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[Discovery] Failed to marshal beacon: %v\n", err)
-		return
-	}
-
 	fmt.Println("[Discovery] Beacon started, broadcasting every 1s...")
 
 	ticker := time.NewTicker(BeaconInterval)
@@ -112,7 +109,24 @@ func (d *Discovery) startBeacon() {
 		case <-d.stopChan:
 			return
 		case <-ticker.C:
-			_, err := conn.Write(data)
+			// Build packet with current grab state
+			d.grabMu.RLock()
+			packet := BeaconPacket{
+				DeviceID:    d.deviceID,
+				DeviceName:  d.deviceName,
+				ServicePort: ServicePort,
+				IsHolding:   d.isHolding,
+				HeldFile:    d.heldFile,
+			}
+			d.grabMu.RUnlock()
+
+			data, err := json.Marshal(packet)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[Discovery] Failed to marshal beacon: %v\n", err)
+				continue
+			}
+
+			_, err = conn.Write(data)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[Discovery] Beacon send error: %v\n", err)
 			}
@@ -164,19 +178,27 @@ func (d *Discovery) startListener() {
 				continue
 			}
 
-			// Check if this is a new peer
+			// Handle peer update
 			d.peersMu.Lock()
-			if _, exists := d.peers[packet.DeviceID]; !exists {
-				peer := &Peer{
-					ID:   packet.DeviceID,
-					IP:   remoteAddr.IP.String(),
-					Name: packet.DeviceName,
-				}
-				d.peers[packet.DeviceID] = peer
+			existingPeer, exists := d.peers[packet.DeviceID]
+			
+			peer := &Peer{
+				ID:        packet.DeviceID,
+				IP:        remoteAddr.IP.String(),
+				Name:      packet.DeviceName,
+				IsHolding: packet.IsHolding,
+				HeldFile:  packet.HeldFile,
+			}
+			d.peers[packet.DeviceID] = peer
 
-				// Output to stdout for Rust to capture
+			if !exists {
+				// New peer discovered
 				peerJSON, _ := json.Marshal(peer)
 				fmt.Printf("[PEER_FOUND] %s\n", string(peerJSON))
+			} else if existingPeer.IsHolding != packet.IsHolding || existingPeer.HeldFile != packet.HeldFile {
+				// Grab state changed - emit update
+				peerJSON, _ := json.Marshal(peer)
+				fmt.Printf("[GRAB_UPDATE] %s\n", string(peerJSON))
 			}
 			d.peersMu.Unlock()
 		}
@@ -191,4 +213,45 @@ func (d *Discovery) GetDeviceID() string {
 // GetDeviceName returns this device's name
 func (d *Discovery) GetDeviceName() string {
 	return d.deviceName
+}
+
+// SetGrab starts holding a file
+func (d *Discovery) SetGrab(filename string) {
+	d.grabMu.Lock()
+	d.isHolding = true
+	d.heldFile = filename
+	d.grabMu.Unlock()
+	fmt.Printf("[Discovery] Now holding: %s\n", filename)
+}
+
+// ClearGrab releases the held file
+func (d *Discovery) ClearGrab() {
+	d.grabMu.Lock()
+	d.isHolding = false
+	d.heldFile = ""
+	d.grabMu.Unlock()
+	fmt.Println("[Discovery] Released file")
+}
+
+// IsHolding returns current grab state
+func (d *Discovery) IsHolding() (bool, string) {
+	d.grabMu.RLock()
+	defer d.grabMu.RUnlock()
+	return d.isHolding, d.heldFile
+}
+
+// GetLocalIP returns the local IP address
+func GetLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return "127.0.0.1"
 }
