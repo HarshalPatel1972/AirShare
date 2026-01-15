@@ -96,6 +96,13 @@ pub fn run() {
                                 println!("[Transfer] Download complete: {}", path);
                                 let _ = app_handle.emit("download-complete", path);
                             }
+                            // Check for transfer request (security)
+                            else if output_str.starts_with("[TRANSFER_REQUEST]") {
+                                let json_str = output_str.trim_start_matches("[TRANSFER_REQUEST]").trim();
+                                println!("[Security] Transfer request: {}", json_str);
+                                // Emit as raw JSON - will be parsed on frontend
+                                let _ = app_handle.emit("transfer-request", json_str);
+                            }
                             else {
                                 println!("[Go Engine] {}", output_str);
                             }

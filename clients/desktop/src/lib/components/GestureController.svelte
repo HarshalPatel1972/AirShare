@@ -10,6 +10,19 @@
   let isRunning = false;
   let errorMessage = '';
   let isLoading = true;
+  let previousGesture: GestureType = 'None';
+
+  // Haptic feedback (uses Vibration API on supported browsers)
+  function triggerHaptic(style: 'heavy' | 'light') {
+    if ('vibrate' in navigator) {
+      if (style === 'heavy') {
+        navigator.vibrate(50); // 50ms vibration for grab
+      } else {
+        navigator.vibrate(20); // 20ms vibration for release
+      }
+    }
+    console.log(`[Haptic] ${style}`);
+  }
 
   // Map MediaPipe gesture names to our types
   function mapGesture(gestureName: string): GestureType {
@@ -112,6 +125,16 @@
       const gesture = results.gestures[0][0];
       const gestureName = mapGesture(gesture.categoryName);
       const confidence = gesture.score;
+
+      // Haptic feedback on gesture change
+      if (gestureName !== previousGesture) {
+        if (gestureName === 'Closed_Fist' && previousGesture !== 'Closed_Fist') {
+          triggerHaptic('heavy'); // Grab
+        } else if (gestureName === 'Open_Palm' && previousGesture === 'Closed_Fist') {
+          triggerHaptic('light'); // Release
+        }
+        previousGesture = gestureName;
+      }
 
       updateHandState(true, gestureName, cursorX, cursorY, confidence);
     } else {

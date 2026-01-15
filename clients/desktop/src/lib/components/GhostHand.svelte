@@ -4,6 +4,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { transferState, setRemoteGrab, clearRemoteGrab } from '$lib/stores/transferStore';
   import { handState, isHovering } from '$lib/stores/handStore';
+  import { fly, fade, scale } from 'svelte/transition';
 
   let unlisten: UnlistenFn | null = null;
 
@@ -41,27 +42,28 @@
   async function handleReceive() {
     if (!$transferState.remoteGrab) return;
 
-    const { peerIp, fileName } = $transferState.remoteGrab;
-    const downloadUrl = `http://${peerIp}:8080/file/${fileName}`;
-    const destPath = `C:/Users/Public/Downloads/${fileName}`;
+    const { peerName, peerIp, fileName } = $transferState.remoteGrab;
 
-    console.log('Receiving file:', downloadUrl);
+    console.log('Requesting transfer:', fileName);
 
+    // Request transfer (goes through approval flow)
     try {
       await invoke('send_to_sidecar', { 
-        command: `DOWNLOAD ${downloadUrl} ${destPath}` 
+        command: `REQUEST_TRANSFER ${fileName} ${peerName} ${peerIp}` 
       });
       clearRemoteGrab();
     } catch (err) {
-      console.error('Download failed:', err);
+      console.error('Transfer request failed:', err);
     }
   }
 </script>
 
 {#if $transferState.remoteGrab}
-  <div class="ghost-hand">
+  <div class="ghost-hand" in:fade={{ duration: 300 }} out:fade={{ duration: 200 }}>
     <div 
       class="ghost-icon"
+      in:fly={{ y: -30, duration: 400 }}
+      out:scale={{ duration: 200, start: 0.8 }}
       style="
         left: {$handState.cursorPosition.x * 100}%;
         top: {$handState.cursorPosition.y * 100}%;
@@ -77,7 +79,7 @@
       </div>
     </div>
 
-    <div class="receive-hint">
+    <div class="receive-hint" in:fly={{ y: 20, duration: 400, delay: 200 }}>
       🖐️ Open your palm to receive the file!
     </div>
   </div>

@@ -4,6 +4,7 @@
   import CursorOverlay from '$lib/components/CursorOverlay.svelte';
   import FileGallery from '$lib/components/FileGallery.svelte';
   import GhostHand from '$lib/components/GhostHand.svelte';
+  import NotificationToast from '$lib/components/NotificationToast.svelte';
 </script>
 
 <!-- Global cursor overlay -->
@@ -11,6 +12,9 @@
 
 <!-- Ghost hand for receiving files -->
 <GhostHand />
+
+<!-- Security toast for transfer requests -->
+<NotificationToast />
 
 <!-- Gesture detection (webcam preview in corner) -->
 <GestureController />

@@ -77,13 +77,29 @@ func listenForCommands() {
 			disc.ClearGrab()
 			fmt.Println("[CMD] Grab released")
 
-		case "DOWNLOAD":
+		case "REQUEST_TRANSFER":
+			// Emit transfer request for user approval (security)
 			if len(parts) > 1 {
-				// Format: DOWNLOAD http://ip:port/file/name dest_path
+				// Format: REQUEST_TRANSFER filename senderName senderIp
+				args := strings.SplitN(parts[1], " ", 3)
+				if len(args) >= 3 {
+					filename := args[0]
+					senderName := args[1]
+					senderIp := args[2]
+					fmt.Printf("[TRANSFER_REQUEST] {\"filename\":\"%s\",\"senderName\":\"%s\",\"senderIp\":\"%s\"}\n",
+						filename, senderName, senderIp)
+				}
+			}
+
+		case "CONFIRM_TRANSFER":
+			// User accepted - now download
+			if len(parts) > 1 {
+				// Format: CONFIRM_TRANSFER http://ip:port/file/name dest_path
 				args := strings.SplitN(parts[1], " ", 2)
 				if len(args) == 2 {
 					url := args[0]
 					destPath := args[1]
+					fmt.Printf("[CMD] Downloading: %s\n", url)
 					go func() {
 						if err := srv.DownloadFile(url, destPath); err != nil {
 							fmt.Fprintf(os.Stderr, "[ERROR] Download failed: %v\n", err)
@@ -93,6 +109,9 @@ func listenForCommands() {
 					}()
 				}
 			}
+
+		case "REJECT_TRANSFER":
+			fmt.Println("[CMD] Transfer rejected by user")
 
 		case "GET_IP":
 			fmt.Printf("[LOCAL_IP] %s\n", discovery.GetLocalIP())
