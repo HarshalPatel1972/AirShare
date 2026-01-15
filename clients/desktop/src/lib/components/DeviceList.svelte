@@ -18,6 +18,16 @@
       unlisten();
     }
   });
+
+  // Test function to inject a fake peer (for development/demo)
+  function addTestPeer() {
+    const testPeer: Peer = {
+      id: `test-${Date.now()}`,
+      ip: '192.168.1.' + Math.floor(Math.random() * 255),
+      name: 'Test Device ' + Math.floor(Math.random() * 100)
+    };
+    addPeer(testPeer);
+  }
 </script>
 
 <div class="device-list">
@@ -42,6 +52,11 @@
       {/each}
     </ul>
   {/if}
+
+  <!-- Dev/Test button -->
+  <button class="test-btn" onclick={addTestPeer}>
+    🧪 Add Test Peer
+  </button>
 </div>
 
 <style>
@@ -139,5 +154,22 @@
   .peer-status.online {
     background: #4ade80;
     box-shadow: 0 0 8px #4ade80;
+  }
+
+  .test-btn {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(100, 108, 255, 0.2);
+    border: 1px solid rgba(100, 108, 255, 0.4);
+    border-radius: 8px;
+    color: #a5a8ff;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+  }
+
+  .test-btn:hover {
+    background: rgba(100, 108, 255, 0.3);
+    border-color: rgba(100, 108, 255, 0.6);
   }
 </style>
