@@ -51,8 +51,8 @@
       if (file) {
         grabbedFile = hoveredFile;
         startLocalGrab(file.name);
-        // Send GRAB command to Go engine
-        invoke('send_to_sidecar', { command: `GRAB ${file.name}` }).catch(console.error);
+        // Send GRAB command to native Rust engine
+        invoke('set_grab', { filename: file.name }).catch(console.error);
         console.log('Grabbed:', file.name);
       }
     }
@@ -60,8 +60,8 @@
     // If opening palm while holding a file, release it
     if ($isHovering && grabbedFile) {
       endLocalGrab();
-      // Send RELEASE command to Go engine
-      invoke('send_to_sidecar', { command: 'RELEASE' }).catch(console.error);
+      // Send RELEASE command to native Rust engine
+      invoke('clear_grab').catch(console.error);
       console.log('Released file');
       grabbedFile = null;
     }

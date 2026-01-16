@@ -42,18 +42,19 @@
   async function handleReceive() {
     if (!$transferState.remoteGrab) return;
 
-    const { peerName, peerIp, fileName } = $transferState.remoteGrab;
+    const { peerIp, fileName } = $transferState.remoteGrab;
+    const downloadUrl = `http://${peerIp}:8080/file/${fileName}`;
+    const destPath = `C:/Users/Public/Downloads/${fileName}`;
 
-    console.log('Requesting transfer:', fileName);
+    console.log('Downloading:', downloadUrl);
 
-    // Request transfer (goes through approval flow)
+    // Use native Rust download command
     try {
-      await invoke('send_to_sidecar', { 
-        command: `REQUEST_TRANSFER ${fileName} ${peerName} ${peerIp}` 
-      });
+      await invoke('download_file', { url: downloadUrl, destPath });
+      console.log('Download complete:', destPath);
       clearRemoteGrab();
     } catch (err) {
-      console.error('Transfer request failed:', err);
+      console.error('Download failed:', err);
     }
   }
 </script>
