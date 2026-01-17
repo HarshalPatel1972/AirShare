@@ -7,12 +7,19 @@ export interface CursorPosition {
   y: number;
 }
 
+export interface Landmark3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface HandState {
   isHandDetected: boolean;
   gesture: GestureType;
   cursorPosition: CursorPosition;
-  rawPosition: CursorPosition; // Before smoothing
+  rawPosition: CursorPosition;
   confidence: number;
+  landmarks: Landmark3D[] | null; // 21 MediaPipe landmarks
 }
 
 const initialState: HandState = {
@@ -20,7 +27,8 @@ const initialState: HandState = {
   gesture: 'None',
   cursorPosition: { x: 0.5, y: 0.5 },
   rawPosition: { x: 0.5, y: 0.5 },
-  confidence: 0
+  confidence: 0,
+  landmarks: null
 };
 
 // Main hand state store
@@ -40,7 +48,8 @@ export function updateHandState(
   gesture: GestureType,
   rawX: number,
   rawY: number,
-  confidence: number
+  confidence: number,
+  landmarks: Landmark3D[] | null = null
 ) {
   handState.update((state) => {
     // Invert X-axis for mirrored webcam (moving right should move cursor right)
@@ -55,7 +64,8 @@ export function updateHandState(
       gesture: detected ? gesture : 'None',
       cursorPosition: { x: smoothedX, y: smoothedY },
       rawPosition: { x: invertedX, y: rawY },
-      confidence
+      confidence,
+      landmarks: detected ? landmarks : null
     };
   });
 }

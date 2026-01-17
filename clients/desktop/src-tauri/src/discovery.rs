@@ -10,6 +10,8 @@ use tokio::sync::RwLock;
 const DISCOVERY_PORT: u16 = 9988;
 const BEACON_INTERVAL_MS: u64 = 1000;
 const BROADCAST_ADDR: &str = "255.255.255.255:9988";
+// Multicast address for better hotspot compatibility
+const MULTICAST_ADDR: &str = "224.0.0.251:9988";
 
 /// Beacon packet broadcast over UDP
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,7 +116,9 @@ pub async fn start_beacon(state: SharedDiscoveryState) {
         };
 
         if let Ok(json) = serde_json::to_string(&packet) {
+            // Send to both broadcast and multicast for better compatibility
             let _ = socket.send_to(json.as_bytes(), BROADCAST_ADDR).await;
+            let _ = socket.send_to(json.as_bytes(), MULTICAST_ADDR).await;
         }
 
         tokio::time::sleep(tokio::time::Duration::from_millis(BEACON_INTERVAL_MS)).await;

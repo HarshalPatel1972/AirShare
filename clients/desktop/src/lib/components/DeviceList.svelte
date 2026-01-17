@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+  import { invoke } from '@tauri-apps/api/core';
   import { peers, addPeer, type Peer } from '$lib/stores/deviceStore';
 
   let unlisten: UnlistenFn | null = null;
+  let manualIp = '';
+  let isConnecting = false;
 
   onMount(async () => {
     // Listen for peer-discovered events from Rust
@@ -18,6 +21,21 @@
       unlisten();
     }
   });
+
+  // Manual connect by IP (for hotspot fallback)
+  async function handleManualConnect() {
+    if (!manualIp.trim()) return;
+    
+    isConnecting = true;
+    try {
+      await invoke('manual_connect', { ip: manualIp.trim() });
+      manualIp = '';
+    } catch (err) {
+      console.error('Manual connect failed:', err);
+    } finally {
+      isConnecting = false;
+    }
+  }
 
   // Test function to inject a fake peer (for development/demo)
   function addTestPeer() {
@@ -52,6 +70,19 @@
       {/each}
     </ul>
   {/if}
+
+  <!-- Manual Connect (for hotspot fallback) -->
+  <div class="manual-connect">
+    <input 
+      type="text" 
+      bind:value={manualIp}
+      placeholder="Enter IP address (e.g. 192.168.1.100)"
+      disabled={isConnecting}
+    />
+    <button onclick={handleManualConnect} disabled={isConnecting || !manualIp.trim()}>
+      {isConnecting ? '⏳' : '🔗'} Connect
+    </button>
+  </div>
 
   <!-- Dev/Test button -->
   <button class="test-btn" onclick={addTestPeer}>
@@ -171,5 +202,48 @@
   .test-btn:hover {
     background: rgba(100, 108, 255, 0.3);
     border-color: rgba(100, 108, 255, 0.6);
+  }
+
+  .manual-connect {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .manual-connect input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: #fff;
+    font-family: monospace;
+    font-size: 0.875rem;
+  }
+
+  .manual-connect input::placeholder {
+    color: #666;
+  }
+
+  .manual-connect button {
+    padding: 0.5rem 1rem;
+    background: rgba(74, 222, 128, 0.2);
+    border: 1px solid rgba(74, 222, 128, 0.4);
+    border-radius: 8px;
+    color: #4ade80;
+    cursor: pointer;
+    font-size: 0.875rem;
+    white-space: nowrap;
+  }
+
+  .manual-connect button:hover:not(:disabled) {
+    background: rgba(74, 222, 128, 0.3);
+  }
+
+  .manual-connect button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

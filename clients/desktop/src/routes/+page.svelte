@@ -1,149 +1,165 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
   import DeviceList from '$lib/components/DeviceList.svelte';
   import GestureController from '$lib/components/GestureController.svelte';
-  import CursorOverlay from '$lib/components/CursorOverlay.svelte';
+  import CyberHand from '$lib/components/CyberHand.svelte';
   import FileGallery from '$lib/components/FileGallery.svelte';
   import GhostHand from '$lib/components/GhostHand.svelte';
   import NotificationToast from '$lib/components/NotificationToast.svelte';
+  
+  let isPhantomMode = true;
+  let clickThrough = false;
+  
+  // Toggle click-through mode
+  async function toggleClickThrough() {
+    try {
+      clickThrough = !clickThrough;
+      await invoke('set_click_through', { enabled: clickThrough });
+    } catch (err) {
+      console.error('Failed to toggle click-through:', err);
+    }
+  }
+  
+  // Keyboard shortcut: ESC to toggle click-through
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      toggleClickThrough();
+    }
+  }
+  
+  onMount(() => {
+    window.addEventListener('keydown', handleKeydown);
+  });
+  
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleKeydown);
+  });
 </script>
 
-<!-- Global cursor overlay -->
-<CursorOverlay />
+<!-- Gesture detection (webcam preview in corner) -->
+<GestureController />
 
-<!-- Ghost hand for receiving files -->
+<!-- 3D CyberHand overlay -->
+<CyberHand />
+
+<!-- Ghost hand for receiving files from peers -->
 <GhostHand />
 
 <!-- Security toast for transfer requests -->
 <NotificationToast />
 
-<!-- Gesture detection (webcam preview in corner) -->
-<GestureController />
-
-<main class="container">
-  <h1>🚀 AirShare</h1>
-  <p class="subtitle">Share files instantly with nearby devices</p>
-
-  <FileGallery />
-  <DeviceList />
-</main>
+{#if !clickThrough}
+  <!-- Main UI (visible when click-through is disabled) -->
+  <main class="container" class:phantom={isPhantomMode}>
+    <div class="status-bar">
+      <span class="status-dot"></span>
+      <span>AirShare Active</span>
+      <button class="toggle-btn" onclick={toggleClickThrough}>
+        {clickThrough ? '🔓 Unlock UI' : '🔒 Lock UI (Click-Through)'}
+      </button>
+    </div>
+    
+    <div class="panels">
+      <FileGallery />
+      <DeviceList />
+    </div>
+  </main>
+{:else}
+  <!-- Minimal indicator when in click-through mode -->
+  <div class="phantom-indicator">
+    <span>👻 Phantom Mode</span>
+  </div>
+{/if}
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    background: transparent !important;
+    overflow: hidden;
+  }
+  
+  :global(html) {
+    background: transparent !important;
+  }
+  
+  .container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 1rem;
+    background: rgba(15, 15, 15, 0.85);
+    backdrop-filter: blur(10px);
     color: #f6f6f6;
-    background-color: #2f2f2f;
+    font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   }
-
-  a:hover {
-    color: #24c8db;
+  
+  .container.phantom {
+    background: rgba(15, 15, 15, 0.6);
   }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 212, 255, 0.1);
+    border-radius: 12px;
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    margin-bottom: 1rem;
   }
-  button:active {
-    background-color: #0f0f0f69;
+  
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+    animation: pulse 2s ease-in-out infinite;
   }
-}
-
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  
+  .toggle-btn {
+    margin-left: auto;
+    padding: 0.5rem 1rem;
+    background: rgba(100, 108, 255, 0.2);
+    border: 1px solid rgba(100, 108, 255, 0.4);
+    border-radius: 8px;
+    color: #a5a8ff;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+  }
+  
+  .toggle-btn:hover {
+    background: rgba(100, 108, 255, 0.3);
+  }
+  
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    flex: 1;
+  }
+  
+  .phantom-indicator {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.5rem 1rem;
+    background: rgba(0, 255, 136, 0.2);
+    border: 1px solid rgba(0, 255, 136, 0.4);
+    border-radius: 20px;
+    color: #00ff88;
+    font-family: Inter, sans-serif;
+    font-size: 0.875rem;
+    pointer-events: none;
+    z-index: 10000;
+  }
 </style>

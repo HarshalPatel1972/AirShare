@@ -15,7 +15,12 @@
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.22-rc.20250304",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-opener": "^2",
+    "@threlte/core": "^8.3.1",
+    "@threlte/extras": "^9.7.1",
+    "@types/three": "^0.182.0",
+    "svelte-motion": "^0.12.2",
+    "three": "^0.182.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.6",

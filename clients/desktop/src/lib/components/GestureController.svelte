@@ -136,7 +136,14 @@
         previousGesture = gestureName;
       }
 
-      updateHandState(true, gestureName, cursorX, cursorY, confidence);
+      // Convert landmarks to 3D format { x, y, z }
+      const landmarks3D = landmarks.map((lm: { x: number; y: number; z: number }) => ({
+        x: lm.x,
+        y: lm.y,
+        z: lm.z
+      }));
+
+      updateHandState(true, gestureName, cursorX, cursorY, confidence, landmarks3D);
     } else {
       clearHandState();
     }
@@ -197,6 +204,12 @@
     bottom: 20px;
     right: 20px;
     z-index: 100;
+    /* Hidden but still functional - webcam processes for gestures */
+    opacity: 0;
+    pointer-events: none;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
   }
 
   .video-container {
@@ -205,8 +218,6 @@
     height: 120px;
     border-radius: 12px;
     overflow: hidden;
-    border: 2px solid rgba(100, 108, 255, 0.5);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   }
 
   .webcam-feed {
