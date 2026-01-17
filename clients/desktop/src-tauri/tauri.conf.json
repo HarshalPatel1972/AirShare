@@ -12,13 +12,15 @@
   "app": {
     "windows": [
       {
-        "title": "AirShare",
+        "title": "AirShare - Dashboard",
+        "width": 1000,
+        "height": 700,
         "transparent": true,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "maximized": true,
-        "shadow": false,
-        "skipTaskbar": false
+        "decorations": true,
+        "alwaysOnTop": false,
+        "maximized": false,
+        "resizable": true,
+        "center": true
       }
     ],
     "security": {

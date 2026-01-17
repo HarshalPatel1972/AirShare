@@ -87,6 +87,90 @@ async fn set_click_through(window: tauri::Window, enabled: bool) -> Result<(), S
     Ok(())
 }
 
+/// Tauri command to enter Phantom Mode (transparent overlay)
+#[tauri::command]
+async fn enter_phantom_mode(window: tauri::Window) -> Result<(), String> {
+    println!("[Phantom] Entering Phantom Mode...");
+    
+    // Set fullscreen
+    window.set_fullscreen(true).map_err(|e| e.to_string())?;
+    
+    // Remove decorations
+    window.set_decorations(false).map_err(|e| e.to_string())?;
+    
+    // Always on top
+    window.set_always_on_top(true).map_err(|e| e.to_string())?;
+    
+    // Enable click-through
+    window.set_ignore_cursor_events(true).map_err(|e| e.to_string())?;
+    
+    println!("[Phantom] Mode activated!");
+    Ok(())
+}
+
+/// Tauri command to exit Phantom Mode (back to windowed)
+#[tauri::command]
+async fn exit_phantom_mode(window: tauri::Window) -> Result<(), String> {
+    println!("[Phantom] Exiting Phantom Mode...");
+    
+    // Disable click-through first
+    window.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
+    
+    // Exit fullscreen
+    window.set_fullscreen(false).map_err(|e| e.to_string())?;
+    
+    // Restore decorations
+    window.set_decorations(true).map_err(|e| e.to_string())?;
+    
+    // Not always on top
+    window.set_always_on_top(false).map_err(|e| e.to_string())?;
+    
+    // Resize to dashboard size
+    let _ = window.set_size(tauri::LogicalSize::new(1000.0, 700.0));
+    let _ = window.center();
+    
+    println!("[Phantom] Back to Dashboard mode");
+    Ok(())
+}
+
+/// Tauri command to simulate a mouse click at current cursor position
+#[tauri::command]
+fn simulate_click() -> Result<(), String> {
+    use enigo::{Enigo, Mouse, Settings, Button};
+    
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    enigo.button(Button::Left, enigo::Direction::Click).map_err(|e| e.to_string())?;
+    
+    println!("[Gesture] Simulated click");
+    Ok(())
+}
+
+/// Tauri command to simulate scroll
+#[tauri::command]
+fn simulate_scroll(direction: i32) -> Result<(), String> {
+    use enigo::{Enigo, Mouse, Settings, Axis};
+    
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    // Positive = scroll up, Negative = scroll down
+    enigo.scroll(direction, Axis::Vertical).map_err(|e| e.to_string())?;
+    
+    println!("[Gesture] Simulated scroll: {}", direction);
+    Ok(())
+}
+
+/// Tauri command to simulate media play/pause
+#[tauri::command]
+fn simulate_media_toggle() -> Result<(), String> {
+    use enigo::{Enigo, Keyboard, Settings, Key};
+    
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    enigo.key(Key::MediaPlayPause, enigo::Direction::Click).map_err(|e| e.to_string())?;
+    
+    println!("[Gesture] Simulated Play/Pause");
+    Ok(())
+}
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let discovery_state: SharedDiscoveryState = Arc::new(RwLock::new(DiscoveryState::new()));
@@ -182,7 +266,12 @@ pub fn run() {
             download_file,
             get_device_info,
             manual_connect,
-            set_click_through
+            set_click_through,
+            enter_phantom_mode,
+            exit_phantom_mode,
+            simulate_click,
+            simulate_scroll,
+            simulate_media_toggle
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

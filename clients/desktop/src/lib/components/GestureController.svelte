@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
   import { FilesetResolver, GestureRecognizer, type GestureRecognizerResult } from '@mediapipe/tasks-vision';
   import { updateHandState, clearHandState, type GestureType } from '$lib/stores/handStore';
 
@@ -11,6 +12,11 @@
   let errorMessage = '';
   let isLoading = true;
   let previousGesture: GestureType = 'None';
+  
+  // Advanced gesture state
+  let wasPinching = false;
+  let lastScrollY = 0.5;
+  let lastMediaTrigger = 0;
 
   // Haptic feedback (uses Vibration API on supported browsers)
   function triggerHaptic(style: 'heavy' | 'light') {
@@ -110,14 +116,13 @@
 
   function processResults(results: GestureRecognizerResult) {
     if (results.landmarks && results.landmarks.length > 0 && results.gestures && results.gestures.length > 0) {
-      // Get the first hand's landmarks
       const landmarks = results.landmarks[0];
       
-      // Use index finger tip (landmark 8) or wrist (landmark 0) for cursor position
+      // Cursor position (index tip + wrist blend)
       const indexFingerTip = landmarks[8];
+      const thumbTip = landmarks[4];
       const wrist = landmarks[0];
       
-      // Use a blend - finger tip for precision, wrist for stability
       const cursorX = indexFingerTip.x * 0.7 + wrist.x * 0.3;
       const cursorY = indexFingerTip.y * 0.7 + wrist.y * 0.3;
 
@@ -126,17 +131,58 @@
       const gestureName = mapGesture(gesture.categoryName);
       const confidence = gesture.score;
 
+      // === PINCH DETECTION (Index + Thumb distance) ===
+      const pinchDistance = Math.sqrt(
+        Math.pow(indexFingerTip.x - thumbTip.x, 2) +
+        Math.pow(indexFingerTip.y - thumbTip.y, 2) +
+        Math.pow(indexFingerTip.z - thumbTip.z, 2)
+      );
+      
+      const isPinching = pinchDistance < 0.05;
+      
+      // Pinch click (only trigger once per pinch)
+      if (isPinching && !wasPinching) {
+        invoke('simulate_click').catch(console.error);
+        console.log('[Gesture] Pinch Click!');
+      }
+      wasPinching = isPinching;
+
+      // === VICTORY SCROLL DETECTION ===
+      if (gestureName === 'Victory') {
+        const currentY = cursorY;
+        const deltaY = lastScrollY - currentY;
+        
+        // Only scroll if significant movement
+        if (Math.abs(deltaY) > 0.02) {
+          const scrollAmount = Math.round(deltaY * 10);
+          invoke('simulate_scroll', { direction: scrollAmount }).catch(console.error);
+        }
+        lastScrollY = currentY;
+      } else {
+        lastScrollY = cursorY;
+      }
+
+      // === THUMBS UP MEDIA CONTROL (debounced) ===
+      if (gestureName === 'Thumb_Up') {
+        const now = Date.now();
+        if (now - lastMediaTrigger > 2000) { // 2 second debounce
+          invoke('simulate_media_toggle').catch(console.error);
+          console.log('[Gesture] Media Play/Pause');
+          lastMediaTrigger = now;
+        }
+      }
+
       // Haptic feedback on gesture change
       if (gestureName !== previousGesture) {
         if (gestureName === 'Closed_Fist' && previousGesture !== 'Closed_Fist') {
-          triggerHaptic('heavy'); // Grab
+          triggerHaptic('heavy');
         } else if (gestureName === 'Open_Palm' && previousGesture === 'Closed_Fist') {
-          triggerHaptic('light'); // Release
+          triggerHaptic('light');
         }
         previousGesture = gestureName;
       }
 
-      // Convert landmarks to 3D format { x, y, z }
+      // Convert landmarks to 3D format
       const landmarks3D = landmarks.map((lm: { x: number; y: number; z: number }) => ({
         x: lm.x,
         y: lm.y,
