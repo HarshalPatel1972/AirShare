@@ -17,6 +17,10 @@
   let wasPinching = false;
   let lastScrollY = 0.5;
   let lastMediaTrigger = 0;
+  let lastClickTime = 0;
+  let scrollAccumulator = 0;
+  let lastScreenX = 0;
+  let lastScreenY = 0;
 
   // Haptic feedback (uses Vibration API on supported browsers)
   function triggerHaptic(style: 'heavy' | 'light') {
@@ -118,75 +122,103 @@
     if (results.landmarks && results.landmarks.length > 0 && results.gestures && results.gestures.length > 0) {
       const landmarks = results.landmarks[0];
       
-      // Cursor position (index tip + wrist blend)
+      // Use index finger tip for cursor
       const indexFingerTip = landmarks[8];
       const thumbTip = landmarks[4];
-      const wrist = landmarks[0];
       
-      const cursorX = indexFingerTip.x * 0.7 + wrist.x * 0.3;
-      const cursorY = indexFingerTip.y * 0.7 + wrist.y * 0.3;
-
+      // === SCALED SCREEN MAPPING ===
+      // The hand typically only moves within 20-80% of camera view
+      // Scale up to allow full screen coverage with smaller movements
+      const SCALE = 2.5;  // Movement multiplier
+      const CENTER_X = 0.5;
+      const CENTER_Y = 0.5;
+      
+      // Invert X for mirror, then scale from center
+      const rawX = 1 - indexFingerTip.x;
+      const rawY = indexFingerTip.y;
+      
+      // Scale movements from center point
+      const scaledX = CENTER_X + (rawX - CENTER_X) * SCALE;
+      const scaledY = CENTER_Y + (rawY - CENTER_Y) * SCALE;
+      
+      // Clamp to 0-1
+      const normalizedX = Math.max(0, Math.min(1, scaledX));
+      const normalizedY = Math.max(0, Math.min(1, scaledY));
+      
+      const cursorX = normalizedX;
+      const cursorY = normalizedY;
+      
       // Get detected gesture
       const gesture = results.gestures[0][0];
       const gestureName = mapGesture(gesture.categoryName);
       const confidence = gesture.score;
 
-      // === PINCH DETECTION (Index + Thumb distance) ===
+      // === MOVE REAL OS CURSOR ===
+      const screenWidth = window.screen.width;
+      const screenHeight = window.screen.height;
+      const screenX = Math.round(normalizedX * screenWidth);
+      const screenY = Math.round(normalizedY * screenHeight);
+      
+      // Debug log
+      console.log(`Hand: (${rawX.toFixed(2)}, ${rawY.toFixed(2)}) → Screen: (${screenX}, ${screenY})`);
+      
+      // Move cursor (less throttle for smoother movement)
+      if (Math.abs(screenX - lastScreenX) > 2 || Math.abs(screenY - lastScreenY) > 2) {
+        invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
+        lastScreenX = screenX;
+        lastScreenY = screenY;
+      }
+
+      // === PINCH DETECTION (threshold increased for reliability) ===
       const pinchDistance = Math.sqrt(
         Math.pow(indexFingerTip.x - thumbTip.x, 2) +
-        Math.pow(indexFingerTip.y - thumbTip.y, 2) +
-        Math.pow(indexFingerTip.z - thumbTip.z, 2)
+        Math.pow(indexFingerTip.y - thumbTip.y, 2)
       );
       
-      const isPinching = pinchDistance < 0.05;
+      const isPinching = pinchDistance < 0.06; // Slightly larger threshold
       
-      // Pinch click (only trigger once per pinch)
-      if (isPinching && !wasPinching) {
+      // Pinch click with debounce
+      const now = Date.now();
+      if (isPinching && !wasPinching && (now - lastClickTime > 300)) {
         invoke('simulate_click').catch(console.error);
-        console.log('[Gesture] Pinch Click!');
+        lastClickTime = now;
       }
       wasPinching = isPinching;
 
-      // === VICTORY SCROLL DETECTION ===
+      // === VICTORY SCROLL (improved sensitivity) ===
       if (gestureName === 'Victory') {
-        const currentY = cursorY;
-        const deltaY = lastScrollY - currentY;
+        const deltaY = lastScrollY - cursorY;
         
-        // Only scroll if significant movement
-        if (Math.abs(deltaY) > 0.02) {
-          const scrollAmount = Math.round(deltaY * 10);
-          invoke('simulate_scroll', { direction: scrollAmount }).catch(console.error);
+        // Accumulate scroll and trigger when threshold reached
+        scrollAccumulator += deltaY * 100; // Scale up for sensitivity
+        
+        if (Math.abs(scrollAccumulator) > 3) {
+          const scrollAmount = Math.round(scrollAccumulator);
+          invoke('simulate_scroll', { direction: scrollAmount }).catch(() => {});
+          scrollAccumulator = 0;
         }
-        lastScrollY = currentY;
+        lastScrollY = cursorY;
       } else {
         lastScrollY = cursorY;
+        scrollAccumulator = 0;
       }
 
-      // === THUMBS UP MEDIA CONTROL (debounced) ===
-      if (gestureName === 'Thumb_Up') {
-        const now = Date.now();
-        if (now - lastMediaTrigger > 2000) { // 2 second debounce
-          invoke('simulate_media_toggle').catch(console.error);
-          console.log('[Gesture] Media Play/Pause');
-          lastMediaTrigger = now;
-        }
+      // === THUMBS UP MEDIA (2s debounce) ===
+      if (gestureName === 'Thumb_Up' && (now - lastMediaTrigger > 2000)) {
+        invoke('simulate_media_toggle').catch(console.error);
+        lastMediaTrigger = now;
       }
 
       // Haptic feedback on gesture change
       if (gestureName !== previousGesture) {
-        if (gestureName === 'Closed_Fist' && previousGesture !== 'Closed_Fist') {
-          triggerHaptic('heavy');
-        } else if (gestureName === 'Open_Palm' && previousGesture === 'Closed_Fist') {
-          triggerHaptic('light');
-        }
+        if (gestureName === 'Closed_Fist') triggerHaptic('heavy');
+        else if (gestureName === 'Open_Palm' && previousGesture === 'Closed_Fist') triggerHaptic('light');
         previousGesture = gestureName;
       }
 
       // Convert landmarks to 3D format
       const landmarks3D = landmarks.map((lm: { x: number; y: number; z: number }) => ({
-        x: lm.x,
-        y: lm.y,
-        z: lm.z
+        x: lm.x, y: lm.y, z: lm.z
       }));
 
       updateHandState(true, gestureName, cursorX, cursorY, confidence, landmarks3D);
@@ -249,21 +281,17 @@
     position: fixed;
     bottom: 20px;
     right: 20px;
-    z-index: 100;
-    /* Hidden but still functional - webcam processes for gestures */
-    opacity: 0;
-    pointer-events: none;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
+    z-index: 999999;
   }
 
   .video-container {
     position: relative;
-    width: 160px;
-    height: 120px;
+    width: 200px;
+    height: 150px;
     border-radius: 12px;
     overflow: hidden;
+    border: 2px solid rgba(0, 212, 255, 0.6);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   }
 
   .webcam-feed {

@@ -170,6 +170,25 @@ fn simulate_media_toggle() -> Result<(), String> {
     Ok(())
 }
 
+/// Tauri command to move the real OS cursor to screen coordinates
+#[tauri::command]
+fn simulate_mouse_move(x: i32, y: i32) -> Result<(), String> {
+    use enigo::{Enigo, Mouse, Settings, Coordinate};
+    
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+/// Tauri command to get screen dimensions
+#[tauri::command]
+fn get_screen_size() -> Result<(i32, i32), String> {
+    // Return typical screen size - enigo doesn't have screen size API
+    // Frontend will use window.screen.width/height instead
+    Ok((1920, 1080))
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -271,7 +290,9 @@ pub fn run() {
             exit_phantom_mode,
             simulate_click,
             simulate_scroll,
-            simulate_media_toggle
+            simulate_media_toggle,
+            simulate_mouse_move,
+            get_screen_size
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
