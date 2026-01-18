@@ -137,35 +137,38 @@
       const palmX = (wrist.x + middleFingerBase.x) / 2;
       const palmY = (wrist.y + middleFingerBase.y) / 2;
       
-      // === RANGE REMAPPING based on actual observed values ===
-      // From debug: palmX ranges ~0.02-0.98, palmY ranges ~0.25-0.85
-      // Remap these ranges to 0-1 for full screen coverage
-      
+      // === RANGE REMAPPING ===
       // Invert X for mirror
       const rawX = 1 - palmX;
       const rawY = palmY;
       
-      // Remap X: observed range is roughly 0.02-0.98 (good, near full)
-      // Remap Y: observed range is roughly 0.25-0.85 (limited!)
-      const Y_MIN = 0.25;
-      const Y_MAX = 0.85;
+      // Remap X: palm doesn't reach full 0-1 range
+      const X_MIN = 0.1;
+      const X_MAX = 0.9;
+      const remappedX = (rawX - X_MIN) / (X_MAX - X_MIN);
       
-      // Remap Y to full range
+      // Remap Y: observed range is roughly 0.2-0.8
+      const Y_MIN = 0.2;
+      const Y_MAX = 0.8;
       const remappedY = (rawY - Y_MIN) / (Y_MAX - Y_MIN);
       
       // Apply smoothing to remapped values
-      smoothX = smoothX + SMOOTHING * (rawX - smoothX);
+      smoothX = smoothX + SMOOTHING * (remappedX - smoothX);
       smoothY = smoothY + SMOOTHING * (remappedY - smoothY);
       
       // Clamp to valid range
       const finalX = Math.max(0, Math.min(1, smoothX));
       const finalY = Math.max(0, Math.min(1, smoothY));
       
-      // Map to screen
-      const screenWidth = window.screen.width;
-      const screenHeight = window.screen.height;
+      // Map to PHYSICAL screen (multiply by devicePixelRatio for Windows scaling)
+      const dpr = window.devicePixelRatio || 1;
+      const screenWidth = Math.round(window.screen.width * dpr);
+      const screenHeight = Math.round(window.screen.height * dpr);
       const screenX = Math.round(finalX * screenWidth);
       const screenY = Math.round(finalY * screenHeight);
+      
+      // DEBUG: Show actual physical screen size
+      console.log(`[MOVE] screenX: ${screenX}, screenY: ${screenY} (physical: ${screenWidth}x${screenHeight}, DPR: ${dpr})`);
       
       const cursorX = smoothX;
       const cursorY = smoothY;
@@ -175,20 +178,24 @@
       const gestureName = mapGesture(gesture.categoryName);
       const confidence = gesture.score;
 
+      // Debug: Log screen position
+      console.log(`[MOVE] screenX: ${screenX}, screenY: ${screenY} (max: ${screenWidth}x${screenHeight})`);
+
       // Move cursor
       invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
       lastScreenX = screenX;
       lastScreenY = screenY;
 
-      // === PINCH DETECTION (threshold increased for reliability) ===
+      // ====== ALL GESTURES DISABLED - FOCUS ON MOVEMENT ONLY ======
+      // (Pinch, Scroll, Media, Haptics all commented out)
+      
+      /*
+      // === PINCH DETECTION ===
       const pinchDistance = Math.sqrt(
         Math.pow(indexFingerTip.x - thumbTip.x, 2) +
         Math.pow(indexFingerTip.y - thumbTip.y, 2)
       );
-      
-      const isPinching = pinchDistance < 0.06; // Slightly larger threshold
-      
-      // Pinch click with debounce
+      const isPinching = pinchDistance < 0.06;
       const now = Date.now();
       if (isPinching && !wasPinching && (now - lastClickTime > 300)) {
         invoke('simulate_click').catch(console.error);
@@ -196,15 +203,11 @@
       }
       wasPinching = isPinching;
 
-      // === VICTORY SCROLL (improved sensitivity) ===
+      // === VICTORY SCROLL ===
       if (gestureName === 'Victory') {
         const deltaY = lastScrollY - cursorY;
-        
-        // Accumulate scroll and trigger when threshold reached
-        scrollAccumulator += deltaY * 100; // Scale up for sensitivity
-        
+        scrollAccumulator += deltaY * 100;
         if (Math.abs(scrollAccumulator) > 3) {
-          const scrollAmount = Math.round(scrollAccumulator);
           invoke('simulate_scroll', { direction: scrollAmount }).catch(() => {});
           scrollAccumulator = 0;
         }
@@ -214,18 +217,19 @@
         scrollAccumulator = 0;
       }
 
-      // === THUMBS UP MEDIA (2s debounce) ===
+      // === THUMBS UP MEDIA ===
       if (gestureName === 'Thumb_Up' && (now - lastMediaTrigger > 2000)) {
         invoke('simulate_media_toggle').catch(console.error);
         lastMediaTrigger = now;
       }
 
-      // Haptic feedback on gesture change
+      // Haptic feedback
       if (gestureName !== previousGesture) {
         if (gestureName === 'Closed_Fist') triggerHaptic('heavy');
         else if (gestureName === 'Open_Palm' && previousGesture === 'Closed_Fist') triggerHaptic('light');
         previousGesture = gestureName;
       }
+      */
 
       // Convert landmarks to 3D format
       const landmarks3D = landmarks.map((lm: { x: number; y: number; z: number }) => ({
