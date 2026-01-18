@@ -34,3 +34,6 @@ reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"
 
 # OS-level input simulation for gesture controls
 enigo = { version = "0.2", default-features = false }
+
+# Directory access (Downloads folder, etc.)
+dirs = "5"

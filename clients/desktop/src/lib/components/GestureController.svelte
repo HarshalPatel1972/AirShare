@@ -21,6 +21,11 @@
   let scrollAccumulator = 0;
   let lastScreenX = 0;
   let lastScreenY = 0;
+  
+  // Cursor smoothing (exponential moving average)
+  let smoothX = 0.5;
+  let smoothY = 0.5;
+  const SMOOTHING = 0.3; // Lower = smoother but slower (0.1-0.5)
 
   // Haptic feedback (uses Vibration API on supported browsers)
   function triggerHaptic(style: 'heavy' | 'light') {
@@ -122,24 +127,29 @@
     if (results.landmarks && results.landmarks.length > 0 && results.gestures && results.gestures.length > 0) {
       const landmarks = results.landmarks[0];
       
-      // Use index finger tip for cursor
+      // Use PALM CENTER for stable cursor (average of wrist + middle finger base)
+      const wrist = landmarks[0];
+      const middleFingerBase = landmarks[9];
       const indexFingerTip = landmarks[8];
       const thumbTip = landmarks[4];
       
-      // === SCALED SCREEN MAPPING ===
-      // The hand typically only moves within 20-80% of camera view
-      // Scale up to allow full screen coverage with smaller movements
-      const SCALE = 2.5;  // Movement multiplier
-      const CENTER_X = 0.5;
-      const CENTER_Y = 0.5;
+      // Palm center = average of wrist and middle finger base
+      const palmX = (wrist.x + middleFingerBase.x) / 2;
+      const palmY = (wrist.y + middleFingerBase.y) / 2;
       
-      // Invert X for mirror, then scale from center
-      const rawX = 1 - indexFingerTip.x;
-      const rawY = indexFingerTip.y;
+      // === IMPROVED SCREEN MAPPING ===
+      // Invert X for mirror effect
+      const rawX = 1 - palmX;
+      const rawY = palmY;
       
-      // Scale movements from center point
-      const scaledX = CENTER_X + (rawX - CENTER_X) * SCALE;
-      const scaledY = CENTER_Y + (rawY - CENTER_Y) * SCALE;
+      // Apply exponential smoothing (EMA filter)
+      smoothX = smoothX + SMOOTHING * (rawX - smoothX);
+      smoothY = smoothY + SMOOTHING * (rawY - smoothY);
+      
+      // Scale from center with modest multiplier
+      const SCALE = 1.8;
+      const scaledX = 0.5 + (smoothX - 0.5) * SCALE;
+      const scaledY = 0.5 + (smoothY - 0.5) * SCALE;
       
       // Clamp to 0-1
       const normalizedX = Math.max(0, Math.min(1, scaledX));
@@ -159,15 +169,10 @@
       const screenX = Math.round(normalizedX * screenWidth);
       const screenY = Math.round(normalizedY * screenHeight);
       
-      // Debug log
-      console.log(`Hand: (${rawX.toFixed(2)}, ${rawY.toFixed(2)}) → Screen: (${screenX}, ${screenY})`);
-      
-      // Move cursor (less throttle for smoother movement)
-      if (Math.abs(screenX - lastScreenX) > 2 || Math.abs(screenY - lastScreenY) > 2) {
-        invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
-        lastScreenX = screenX;
-        lastScreenY = screenY;
-      }
+      // Move cursor (smooth, no heavy throttling)
+      invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
+      lastScreenX = screenX;
+      lastScreenY = screenY;
 
       // === PINCH DETECTION (threshold increased for reliability) ===
       const pinchDistance = Math.sqrt(

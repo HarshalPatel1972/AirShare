@@ -7,6 +7,7 @@
   import FileGallery from '$lib/components/FileGallery.svelte';
   import GhostHand from '$lib/components/GhostHand.svelte';
   import NotificationToast from '$lib/components/NotificationToast.svelte';
+  import PortalDock from '$lib/components/PortalDock.svelte';
   import { handState } from '$lib/stores/handStore';
   
   // Mode: 'dashboard' (normal window) or 'phantom' (transparent overlay)
@@ -64,6 +65,7 @@
   <CyberHand />
   <GhostHand />
   <NotificationToast />
+  <PortalDock />
   
   <button class="exit-btn" onclick={exitPhantomMode} title="Exit (ESC)">
     ✕

@@ -189,6 +189,59 @@ fn get_screen_size() -> Result<(i32, i32), String> {
     Ok((1920, 1080))
 }
 
+/// Tauri command to get AirShare Downloads folder path
+#[tauri::command]
+fn get_airshare_downloads() -> Result<String, String> {
+    let downloads_dir = dirs::download_dir()
+        .ok_or("Could not find Downloads directory")?;
+    
+    let airshare_dir = downloads_dir.join("AirShare_Downloads");
+    
+    // Create directory if it doesn't exist
+    if !airshare_dir.exists() {
+        std::fs::create_dir_all(&airshare_dir)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+        println!("[Files] Created: {:?}", airshare_dir);
+    }
+    
+    airshare_dir.to_str()
+        .map(|s| s.to_string())
+        .ok_or("Invalid path".to_string())
+}
+
+/// Tauri command to save received file bytes to disk
+#[tauri::command]
+fn save_received_file(filename: String, data: Vec<u8>) -> Result<String, String> {
+    let downloads_dir = dirs::download_dir()
+        .ok_or("Could not find Downloads directory")?;
+    
+    let airshare_dir = downloads_dir.join("AirShare_Downloads");
+    
+    // Create directory if it doesn't exist
+    if !airshare_dir.exists() {
+        std::fs::create_dir_all(&airshare_dir)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    
+    let file_path = airshare_dir.join(&filename);
+    
+    std::fs::write(&file_path, &data)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+    
+    println!("[Files] Saved: {:?} ({} bytes)", file_path, data.len());
+    
+    file_path.to_str()
+        .map(|s| s.to_string())
+        .ok_or("Invalid path".to_string())
+}
+
+/// Tauri command to read a file from disk
+#[tauri::command]
+fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(&path)
+        .map_err(|e| format!("Failed to read file: {}", e))
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -292,7 +345,10 @@ pub fn run() {
             simulate_scroll,
             simulate_media_toggle,
             simulate_mouse_move,
-            get_screen_size
+            get_screen_size,
+            get_airshare_downloads,
+            save_received_file,
+            read_file_bytes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
