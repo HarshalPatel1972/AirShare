@@ -25,7 +25,7 @@
   // Cursor smoothing (exponential moving average)
   let smoothX = 0.5;
   let smoothY = 0.5;
-  const SMOOTHING = 0.3; // Lower = smoother but slower (0.1-0.5)
+  const SMOOTHING = 0.6; // Higher = faster response (was 0.3, too slow)
 
   // Haptic feedback (uses Vibration API on supported browsers)
   function triggerHaptic(style: 'heavy' | 'light') {
@@ -127,7 +127,7 @@
     if (results.landmarks && results.landmarks.length > 0 && results.gestures && results.gestures.length > 0) {
       const landmarks = results.landmarks[0];
       
-      // Use PALM CENTER for stable cursor (average of wrist + middle finger base)
+      // Use PALM CENTER for stable cursor
       const wrist = landmarks[0];
       const middleFingerBase = landmarks[9];
       const indexFingerTip = landmarks[8];
@@ -137,39 +137,45 @@
       const palmX = (wrist.x + middleFingerBase.x) / 2;
       const palmY = (wrist.y + middleFingerBase.y) / 2;
       
-      // === IMPROVED SCREEN MAPPING ===
-      // Invert X for mirror effect
+      // === RANGE REMAPPING based on actual observed values ===
+      // From debug: palmX ranges ~0.02-0.98, palmY ranges ~0.25-0.85
+      // Remap these ranges to 0-1 for full screen coverage
+      
+      // Invert X for mirror
       const rawX = 1 - palmX;
       const rawY = palmY;
       
-      // Apply exponential smoothing (EMA filter)
+      // Remap X: observed range is roughly 0.02-0.98 (good, near full)
+      // Remap Y: observed range is roughly 0.25-0.85 (limited!)
+      const Y_MIN = 0.25;
+      const Y_MAX = 0.85;
+      
+      // Remap Y to full range
+      const remappedY = (rawY - Y_MIN) / (Y_MAX - Y_MIN);
+      
+      // Apply smoothing to remapped values
       smoothX = smoothX + SMOOTHING * (rawX - smoothX);
-      smoothY = smoothY + SMOOTHING * (rawY - smoothY);
+      smoothY = smoothY + SMOOTHING * (remappedY - smoothY);
       
-      // Scale from center with modest multiplier
-      const SCALE = 1.8;
-      const scaledX = 0.5 + (smoothX - 0.5) * SCALE;
-      const scaledY = 0.5 + (smoothY - 0.5) * SCALE;
+      // Clamp to valid range
+      const finalX = Math.max(0, Math.min(1, smoothX));
+      const finalY = Math.max(0, Math.min(1, smoothY));
       
-      // Clamp to 0-1
-      const normalizedX = Math.max(0, Math.min(1, scaledX));
-      const normalizedY = Math.max(0, Math.min(1, scaledY));
+      // Map to screen
+      const screenWidth = window.screen.width;
+      const screenHeight = window.screen.height;
+      const screenX = Math.round(finalX * screenWidth);
+      const screenY = Math.round(finalY * screenHeight);
       
-      const cursorX = normalizedX;
-      const cursorY = normalizedY;
+      const cursorX = smoothX;
+      const cursorY = smoothY;
       
       // Get detected gesture
       const gesture = results.gestures[0][0];
       const gestureName = mapGesture(gesture.categoryName);
       const confidence = gesture.score;
 
-      // === MOVE REAL OS CURSOR ===
-      const screenWidth = window.screen.width;
-      const screenHeight = window.screen.height;
-      const screenX = Math.round(normalizedX * screenWidth);
-      const screenY = Math.round(normalizedY * screenHeight);
-      
-      // Move cursor (smooth, no heavy throttling)
+      // Move cursor
       invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
       lastScreenX = screenX;
       lastScreenY = screenY;
