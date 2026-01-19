@@ -2,6 +2,7 @@
 
 mod discovery;
 mod server;
+mod smart_drop;
 
 use discovery::{start_beacon, start_listener, DiscoveryState, Peer, SharedDiscoveryState};
 use server::{start_server, ServerState, SharedServerState};
@@ -348,7 +349,9 @@ pub fn run() {
             get_screen_size,
             get_airshare_downloads,
             save_received_file,
-            read_file_bytes
+            read_file_bytes,
+            smart_drop::simulate_copy,
+            smart_drop::simulate_paste
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

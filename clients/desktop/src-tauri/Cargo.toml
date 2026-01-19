@@ -37,3 +37,10 @@ enigo = { version = "0.2", default-features = false }
 
 # Directory access (Downloads folder, etc.)
 dirs = "5"
+
+# Clipboard access for Smart Drop
+arboard = "3"
+
+# Image processing for clipboard
+image = "0.25"
+

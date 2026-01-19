@@ -52,6 +52,47 @@
     };
     return gestureMap[gestureName] || 'None';
   }
+  
+  // CUSTOM FIST DETECTION - More reliable than MediaPipe's gesture recognition
+  // Checks if all fingers are curled (tips below MCP joints)
+  function detectFist(landmarks: any[]): boolean {
+    // Finger tip indices: Index=8, Middle=12, Ring=16, Pinky=20
+    // MCP (knuckle) indices: Index=5, Middle=9, Ring=13, Pinky=17
+    const tips = [8, 12, 16, 20];
+    const mcps = [5, 9, 13, 17];
+    
+    let curledFingers = 0;
+    for (let i = 0; i < 4; i++) {
+      const tipY = landmarks[tips[i]].y;
+      const mcpY = landmarks[mcps[i]].y;
+      // If tip is BELOW mcp (higher Y value = lower on screen), finger is curled
+      if (tipY > mcpY) {
+        curledFingers++;
+      }
+    }
+    
+    // Fist = at least 3 fingers curled
+    return curledFingers >= 3;
+  }
+  
+  // CUSTOM PALM DETECTION - All fingers extended
+  function detectOpenPalm(landmarks: any[]): boolean {
+    const tips = [8, 12, 16, 20];
+    const mcps = [5, 9, 13, 17];
+    
+    let extendedFingers = 0;
+    for (let i = 0; i < 4; i++) {
+      const tipY = landmarks[tips[i]].y;
+      const mcpY = landmarks[mcps[i]].y;
+      // If tip is ABOVE mcp (lower Y value), finger is extended
+      if (tipY < mcpY) {
+        extendedFingers++;
+      }
+    }
+    
+    // Open palm = at least 3 fingers extended
+    return extendedFingers >= 3;
+  }
 
   async function initializeGestureRecognizer() {
     try {
@@ -173,24 +214,57 @@
       const cursorX = smoothX;
       const cursorY = smoothY;
       
-      // Get detected gesture
-      const gesture = results.gestures[0][0];
-      const gestureName = mapGesture(gesture.categoryName);
-      const confidence = gesture.score;
+      // CUSTOM GESTURE DETECTION - More reliable than MediaPipe's built-in
+      let gestureName: GestureType = 'None';
+      
+      if (detectFist(landmarks)) {
+        gestureName = 'Closed_Fist';
+      } else if (detectOpenPalm(landmarks)) {
+        gestureName = 'Open_Palm';
+      }
+      
+      // Also get MediaPipe's gesture for comparison
+      const mpGesture = results.gestures[0][0];
+      const mpGestureName = mpGesture.categoryName;
+      const confidence = mpGesture.score;
 
-      // Debug: Log screen position
-      console.log(`[MOVE] screenX: ${screenX}, screenY: ${screenY} (max: ${screenWidth}x${screenHeight})`);
+      // DEBUG: Log both custom and MediaPipe detection
+      console.log(`[GESTURE] Custom: "${gestureName}" | MediaPipe: "${mpGestureName}" (conf: ${confidence.toFixed(2)})`);
 
-      // Move cursor
-      invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
+      // DISABLED: OS cursor movement - testing with visual cursor only
+      // invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
       lastScreenX = screenX;
       lastScreenY = screenY;
 
-      // ====== ALL GESTURES DISABLED - FOCUS ON MOVEMENT ONLY ======
-      // (Pinch, Scroll, Media, Haptics all commented out)
+      // ====== ONLY GRAB & DROP - ALL OTHER GESTURES DISABLED ======
       
+      // Log every gesture transition
+      if (gestureName !== previousGesture) {
+        console.log(`🎯 [Gesture Change] "${previousGesture}" → "${gestureName}"`);
+        
+        // GRAB: Closed Fist = COPY (Ctrl+C)
+        if (gestureName === 'Closed_Fist') {
+          console.log('🤜 FIST DETECTED - Sending Ctrl+C!');
+          triggerHaptic('heavy');
+          invoke('simulate_copy')
+            .then(() => console.log('✅ COPY SUCCESS'))
+            .catch((err) => console.error('❌ COPY FAILED:', err));
+        }
+        
+        // DROP: Open Palm after Fist = PASTE (Ctrl+V)
+        if (gestureName === 'Open_Palm' && previousGesture === 'Closed_Fist') {
+          console.log('🖐️ OPEN PALM AFTER FIST - Sending Ctrl+V!');
+          triggerHaptic('light');
+          invoke('simulate_paste')
+            .then(() => console.log('✅ PASTE SUCCESS'))
+            .catch((err) => console.error('❌ PASTE FAILED:', err));
+        }
+        
+        previousGesture = gestureName;
+      }
+
+      // PINCH CLICK DISABLED - Only grab/drop active
       /*
-      // === PINCH DETECTION ===
       const pinchDistance = Math.sqrt(
         Math.pow(indexFingerTip.x - thumbTip.x, 2) +
         Math.pow(indexFingerTip.y - thumbTip.y, 2)
@@ -202,33 +276,6 @@
         lastClickTime = now;
       }
       wasPinching = isPinching;
-
-      // === VICTORY SCROLL ===
-      if (gestureName === 'Victory') {
-        const deltaY = lastScrollY - cursorY;
-        scrollAccumulator += deltaY * 100;
-        if (Math.abs(scrollAccumulator) > 3) {
-          invoke('simulate_scroll', { direction: scrollAmount }).catch(() => {});
-          scrollAccumulator = 0;
-        }
-        lastScrollY = cursorY;
-      } else {
-        lastScrollY = cursorY;
-        scrollAccumulator = 0;
-      }
-
-      // === THUMBS UP MEDIA ===
-      if (gestureName === 'Thumb_Up' && (now - lastMediaTrigger > 2000)) {
-        invoke('simulate_media_toggle').catch(console.error);
-        lastMediaTrigger = now;
-      }
-
-      // Haptic feedback
-      if (gestureName !== previousGesture) {
-        if (gestureName === 'Closed_Fist') triggerHaptic('heavy');
-        else if (gestureName === 'Open_Palm' && previousGesture === 'Closed_Fist') triggerHaptic('light');
-        previousGesture = gestureName;
-      }
       */
 
       // Convert landmarks to 3D format
