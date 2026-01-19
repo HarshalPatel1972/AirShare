@@ -93,11 +93,11 @@ async fn set_click_through(window: tauri::Window, enabled: bool) -> Result<(), S
 async fn enter_phantom_mode(window: tauri::Window) -> Result<(), String> {
     println!("[Phantom] Entering Phantom Mode...");
     
-    // Set fullscreen
-    window.set_fullscreen(true).map_err(|e| e.to_string())?;
-    
-    // Remove decorations
+    // Remove decorations first
     window.set_decorations(false).map_err(|e| e.to_string())?;
+    
+    // Maximize (not fullscreen - leaves taskbar accessible)
+    window.maximize().map_err(|e| e.to_string())?;
     
     // Always on top
     window.set_always_on_top(true).map_err(|e| e.to_string())?;
@@ -117,17 +117,17 @@ async fn exit_phantom_mode(window: tauri::Window) -> Result<(), String> {
     // Disable click-through first
     window.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
     
-    // Exit fullscreen
-    window.set_fullscreen(false).map_err(|e| e.to_string())?;
+    // Not always on top
+    window.set_always_on_top(false).map_err(|e| e.to_string())?;
+    
+    // Unmaximize
+    window.unmaximize().map_err(|e| e.to_string())?;
     
     // Restore decorations
     window.set_decorations(true).map_err(|e| e.to_string())?;
     
-    // Not always on top
-    window.set_always_on_top(false).map_err(|e| e.to_string())?;
-    
     // Resize to dashboard size
-    let _ = window.set_size(tauri::LogicalSize::new(1000.0, 700.0));
+    let _ = window.set_size(tauri::LogicalSize::new(500.0, 600.0));
     let _ = window.center();
     
     println!("[Phantom] Back to Dashboard mode");
@@ -351,7 +351,9 @@ pub fn run() {
             save_received_file,
             read_file_bytes,
             smart_drop::simulate_copy,
-            smart_drop::simulate_paste
+            smart_drop::simulate_paste,
+            smart_drop::get_clipboard_files,
+            smart_drop::clear_clipboard
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

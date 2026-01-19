@@ -25,7 +25,31 @@
   // Cursor smoothing (exponential moving average)
   let smoothX = 0.5;
   let smoothY = 0.5;
-  const SMOOTHING = 0.6; // Higher = faster response (was 0.3, too slow)
+  const SMOOTHING = 0.6; // Higher = faster response
+  
+  // Drag state for movable camera view
+  let isDragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  let camPosX = $state(20); // Right offset
+  let camPosY = $state(20); // Bottom offset
+  
+  function startDrag(e: MouseEvent) {
+    isDragging = true;
+    dragOffsetX = e.clientX + camPosX;
+    dragOffsetY = e.clientY + camPosY;
+    e.preventDefault();
+  }
+  
+  function onDrag(e: MouseEvent) {
+    if (!isDragging) return;
+    camPosX = dragOffsetX - e.clientX;
+    camPosY = dragOffsetY - e.clientY;
+  }
+  
+  function stopDrag() {
+    isDragging = false;
+  }
 
   // Haptic feedback (uses Vibration API on supported browsers)
   function triggerHaptic(style: 'heavy' | 'light') {
@@ -145,7 +169,13 @@
   }
 
   function detectGestures() {
-    if (!gestureRecognizer || !videoElement || !isRunning) return;
+    if (!isRunning) return;
+
+    // If model or video not ready, just loop again
+    if (!gestureRecognizer || !videoElement) {
+       animationFrameId = requestAnimationFrame(detectGestures);
+       return;
+    }
 
     const startTimeMs = performance.now();
     
@@ -231,52 +261,16 @@
       // DEBUG: Log both custom and MediaPipe detection
       console.log(`[GESTURE] Custom: "${gestureName}" | MediaPipe: "${mpGestureName}" (conf: ${confidence.toFixed(2)})`);
 
-      // DISABLED: OS cursor movement - testing with visual cursor only
-      // invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
+      // Move OS cursor to follow hand
+      invoke('simulate_mouse_move', { x: screenX, y: screenY }).catch(() => {});
       lastScreenX = screenX;
       lastScreenY = screenY;
 
-      // ====== ONLY GRAB & DROP - ALL OTHER GESTURES DISABLED ======
-      
-      // Log every gesture transition
+      // Track gesture changes (copy/paste handled in +page.svelte)
       if (gestureName !== previousGesture) {
-        console.log(`🎯 [Gesture Change] "${previousGesture}" → "${gestureName}"`);
-        
-        // GRAB: Closed Fist = COPY (Ctrl+C)
-        if (gestureName === 'Closed_Fist') {
-          console.log('🤜 FIST DETECTED - Sending Ctrl+C!');
-          triggerHaptic('heavy');
-          invoke('simulate_copy')
-            .then(() => console.log('✅ COPY SUCCESS'))
-            .catch((err) => console.error('❌ COPY FAILED:', err));
-        }
-        
-        // DROP: Open Palm after Fist = PASTE (Ctrl+V)
-        if (gestureName === 'Open_Palm' && previousGesture === 'Closed_Fist') {
-          console.log('🖐️ OPEN PALM AFTER FIST - Sending Ctrl+V!');
-          triggerHaptic('light');
-          invoke('simulate_paste')
-            .then(() => console.log('✅ PASTE SUCCESS'))
-            .catch((err) => console.error('❌ PASTE FAILED:', err));
-        }
-        
+        console.log(`🎯 [Gesture] "${previousGesture}" → "${gestureName}"`);
         previousGesture = gestureName;
       }
-
-      // PINCH CLICK DISABLED - Only grab/drop active
-      /*
-      const pinchDistance = Math.sqrt(
-        Math.pow(indexFingerTip.x - thumbTip.x, 2) +
-        Math.pow(indexFingerTip.y - thumbTip.y, 2)
-      );
-      const isPinching = pinchDistance < 0.06;
-      const now = Date.now();
-      if (isPinching && !wasPinching && (now - lastClickTime > 300)) {
-        invoke('simulate_click').catch(console.error);
-        lastClickTime = now;
-      }
-      wasPinching = isPinching;
-      */
 
       // Convert landmarks to 3D format
       const landmarks3D = landmarks.map((lm: { x: number; y: number; z: number }) => ({
@@ -301,9 +295,22 @@
   }
 
   onMount(async () => {
-    await initializeGestureRecognizer();
-    if (!errorMessage) {
-      await startWebcam();
+    // 1. Start webcam IMMEDIATELY so user sees themselves
+    startWebcam();
+
+    // 2. Load model in parallel (don't block camera)
+    try {
+      // Add timeout to model loading
+      const modelLoadPromise = initializeGestureRecognizer();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Model load timed out (15s)')), 15000)
+      );
+      
+      await Promise.race([modelLoadPromise, timeoutPromise]);
+    } catch (err) {
+      console.error('Gesture model failed:', err);
+      errorMessage = `Model error: ${err}`;
+      isLoading = false;
     }
   });
 
@@ -315,35 +322,42 @@
   });
 </script>
 
-<div class="gesture-controller">
-  {#if isLoading}
-    <div class="status loading">
-      <div class="spinner"></div>
-      <span>Loading gesture model...</span>
-    </div>
-  {:else if errorMessage}
-    <div class="status error">
-      <span>⚠️ {errorMessage}</span>
-    </div>
-  {:else}
-    <div class="video-container">
-      <video 
-        bind:this={videoElement}
-        class="webcam-feed"
-        playsinline
-        muted
-      ></video>
-      <canvas bind:this={canvasElement} class="overlay-canvas"></canvas>
-    </div>
-  {/if}
+<div 
+  class="gesture-controller" 
+  style="right: {camPosX}px; bottom: {camPosY}px;"
+  onmousedown={startDrag}
+  role="application"
+>
+  <div class="video-container">
+    <div class="drag-handle">⋮⋮ Drag to move</div>
+    <video 
+      bind:this={videoElement}
+      class="webcam-feed"
+      playsinline
+      muted
+    ></video>
+    <canvas bind:this={canvasElement} class="overlay-canvas"></canvas>
+    
+    {#if isLoading}
+      <div class="status-overlay">
+        <div class="spinner"></div>
+      </div>
+    {:else if errorMessage}
+      <div class="status-overlay error">
+        <span>⚠️</span>
+      </div>
+    {/if}
+  </div>
 </div>
+
+<!-- Global mouse events for drag -->
+<svelte:window on:mousemove={onDrag} on:mouseup={stopDrag} />
 
 <style>
   .gesture-controller {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
     z-index: 999999;
+    cursor: move;
   }
 
   .video-container {
@@ -354,6 +368,38 @@
     overflow: hidden;
     border: 2px solid rgba(0, 212, 255, 0.6);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    background: #000;
+  }
+  
+  .status-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.5);
+    z-index: 20;
+    pointer-events: none;
+  }
+  
+  .status-overlay.error {
+    background: rgba(255, 0, 0, 0.2);
+    color: red;
+    font-size: 2rem;
+  }
+  
+  .drag-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 4px;
+    background: rgba(0, 0, 0, 0.7);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 10px;
+    text-align: center;
+    z-index: 10;
+    cursor: move;
   }
 
   .webcam-feed {
