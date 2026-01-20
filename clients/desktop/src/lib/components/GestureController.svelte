@@ -294,7 +294,23 @@
     }
   }
 
+  let isMobile = false;
+
   onMount(async () => {
+    isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    
+    // Always add drag listeners
+    window.addEventListener('mouseup', stopDrag);
+    window.addEventListener('mousemove', onDrag);
+
+    if (isMobile) {
+         console.log("📱 Mobile Touch Mode Active");
+         isLoading = false;
+         isRunning = true;
+         return;
+    }
+
+    // DESKTOP ONLY: 
     // 1. Start webcam IMMEDIATELY so user sees themselves
     startWebcam();
 
