@@ -189,8 +189,28 @@
   });
 
   
+  import { updateHandState } from '$lib/stores/handStore';
+
+  // Mobile Touch Logic
+  let isMobile = false;
+  let touchTimer: any = null;
+  let lastTouchX = 0;
+  let lastTouchY = 0;
+
   onMount(() => {
+    isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     window.addEventListener('keydown', handleKeydown);
+    
+    if (isMobile) {
+        // Prevent default scrolling on mobile to allow gestures
+        document.body.style.overflow = 'hidden';
+        document.body.style.touchAction = 'none';
+        
+        // Add Touch Listeners
+        window.addEventListener('touchstart', handleTouchStart, { passive: false });
+        window.addEventListener('touchmove', handleTouchMove, { passive: false });
+        window.addEventListener('touchend', handleTouchEnd);
+    }
     
     let unlistenGrab: () => void;
 
@@ -213,8 +233,63 @@
     return () => {
         if (unlistenGrab) unlistenGrab();
         window.removeEventListener('keydown', handleKeydown);
+        if (isMobile) {
+            window.removeEventListener('touchstart', handleTouchStart);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleTouchEnd);
+        }
     };
   });
+
+  // Touch Handlers
+  function handleTouchStart(e: TouchEvent) {
+      if (!isMobile) return;
+      const touch = e.touches[0];
+      lastTouchX = touch.clientX / window.innerWidth;
+      lastTouchY = touch.clientY / window.innerHeight;
+      
+      // Update Hand State (Initial Touch = Open Palm/Hover)
+      updateHandState(true, 'Open_Palm', lastTouchX, lastTouchY, 1.0);
+      
+      // Start Long Press Timer for GRAB
+      touchTimer = setTimeout(() => {
+          console.log('📱 Mobile Long Press -> GRAB');
+          updateHandState(true, 'Closed_Fist', lastTouchX, lastTouchY, 1.0);
+          
+          // Trigger File Pick if not holding anything
+          if (heldFilename === '') {
+              triggerFilePick();
+          }
+      }, 300); // 300ms hold to grab
+  }
+
+  function handleTouchMove(e: TouchEvent) {
+      if (!isMobile) return;
+      e.preventDefault(); // Prevent scroll
+      const touch = e.touches[0];
+      lastTouchX = touch.clientX / window.innerWidth;
+      lastTouchY = touch.clientY / window.innerHeight;
+      
+      // Keep current gesture (Fist if grabbing, Palm if hovering)
+      const currentGesture = $handState.gesture; // Use store value
+      updateHandState(true, currentGesture, lastTouchX, lastTouchY, 1.0);
+  }
+
+  function handleTouchEnd(e: TouchEvent) {
+      if (!isMobile) return;
+      if (touchTimer) clearTimeout(touchTimer);
+      
+      console.log('📱 Mobile Release -> DROP');
+      // Release = Open Palm (Drop)
+      updateHandState(true, 'Open_Palm', lastTouchX, lastTouchY, 1.0);
+      
+      // Reset to None after short delay
+      setTimeout(() => {
+          if (!isGrabbing) {
+            updateHandState(false, 'None', 0.5, 0.5, 0);
+          }
+      }, 200);
+  }
   
   onDestroy(() => {
     // window.removeEventListener is handled in onMount return
