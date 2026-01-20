@@ -13,7 +13,7 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tower_http::cors::{Any, CorsLayer};
 
-const SERVER_PORT: u16 = 8080;
+const SERVER_PORT: u16 = 8081; // Changed to 8081 to avoid conflicts
 
 /// Server state
 pub struct ServerState {
@@ -57,6 +57,7 @@ pub type SharedServerState = Arc<ServerState>;
 
 /// Start the HTTP file server
 pub async fn start_server(state: SharedServerState) {
+    println!("[Server] Initializing on port {}...", SERVER_PORT); // Debug log
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)

@@ -25,7 +25,7 @@ serde_json = "1"
 
 # Native networking engine (replaces Go sidecar)
 tokio = { version = "1", features = ["full"] }
-axum = "0.7"
+axum = { version = "0.7", features = ["multipart"] }
 tower-http = { version = "0.5", features = ["fs", "cors"] }
 local-ip-address = "0.6"
 uuid = { version = "1", features = ["v4"] }
