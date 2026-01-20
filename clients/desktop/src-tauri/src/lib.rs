@@ -146,6 +146,28 @@ fn simulate_click() -> Result<(), String> {
     Ok(())
 }
 
+
+
+/// Tauri command to simulate Ctrl+Click (Select without opening)
+#[tauri::command]
+fn simulate_ctrl_click() -> Result<(), String> {
+    use enigo::{Enigo, Mouse, Keyboard, Settings, Button, Key};
+    
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
+    
+    // Hold Ctrl
+    enigo.key(Key::Control, enigo::Direction::Press).map_err(|e| e.to_string())?;
+    
+    // Click Left
+    enigo.button(Button::Left, enigo::Direction::Click).map_err(|e| e.to_string())?;
+    
+    // Release Ctrl
+    enigo.key(Key::Control, enigo::Direction::Release).map_err(|e| e.to_string())?;
+    
+    println!("[Gesture] Simulated Ctrl+Click");
+    Ok(())
+}
+
 /// Tauri command to simulate scroll
 #[tauri::command]
 fn simulate_scroll(direction: i32) -> Result<(), String> {
@@ -342,19 +364,30 @@ pub fn run() {
             set_click_through,
             enter_phantom_mode,
             exit_phantom_mode,
+            exit_phantom_mode,
             simulate_click,
+            simulate_ctrl_click,
             simulate_scroll,
             simulate_media_toggle,
             simulate_mouse_move,
             get_screen_size,
+            get_peers, // NEW
             get_airshare_downloads,
             save_received_file,
             read_file_bytes,
             smart_drop::simulate_copy,
             smart_drop::simulate_paste,
             smart_drop::get_clipboard_files,
-            smart_drop::clear_clipboard
+            smart_drop::clear_clipboard,
+            smart_drop::set_clipboard_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Tauri command to get list of discovered peers
+#[tauri::command]
+async fn get_peers(state: tauri::State<'_, SharedDiscoveryState>) -> Result<Vec<discovery::Peer>, String> {
+    let state = state.read().await;
+    Ok(state.get_peers())
 }

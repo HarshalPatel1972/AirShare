@@ -98,3 +98,32 @@ pub fn clear_clipboard() -> Result<(), String> {
     
     Ok(())
 }
+
+/// Set the clipboard content to a list of files (Simulating a Copy from external source)
+#[tauri::command]
+pub fn set_clipboard_files(paths: Vec<String>) -> Result<(), String> {
+    use std::process::Command;
+
+    // Convert Vec<String> to a comma-separated list of quoted paths for PowerShell
+    // Example: "C:\path\to\file1.txt", "C:\path\to\file2.png"
+    let file_list = paths.iter()
+        .map(|p| format!("'{}'", p)) // Wrap in single quotes for PS
+        .collect::<Vec<String>>()
+        .join(",");
+
+    let script = format!("Set-Clipboard -Path {}", file_list);
+
+    println!("[SmartDrop] Injecting files into clipboard: {}", script);
+
+    let output = Command::new("powershell")
+        .args(&["-NoProfile", "-Command", &script])
+        .output()
+        .map_err(|e| format!("Failed to run PowerShell: {}", e))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to set clipboard: {}", err));
+    }
+
+    Ok(())
+}

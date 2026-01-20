@@ -22,10 +22,8 @@ pub struct ServerState {
 
 impl ServerState {
     pub fn new() -> Self {
-        // Use a "shared" folder in the current directory
-        let shared_dir = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join("shared");
+        // Use the unified AirShare_Downloads folder
+        let shared_dir = get_shared_dir();
 
         // Create the directory if it doesn't exist
         if !shared_dir.exists() {
@@ -49,6 +47,12 @@ impl ServerState {
     }
 }
 
+pub fn get_shared_dir() -> std::path::PathBuf {
+    dirs::download_dir()
+        .unwrap_or(std::path::PathBuf::from("."))
+        .join("AirShare_Downloads")
+}
+
 pub type SharedServerState = Arc<ServerState>;
 
 /// Start the HTTP file server
@@ -61,6 +65,10 @@ pub async fn start_server(state: SharedServerState) {
     let app = Router::new()
         .route("/file/{filename}", get(serve_file))
         .route("/health", get(health_check))
+        // New Mobile Web Routes
+        .route("/mobile", get(handle_mobile_ui))
+        .route("/upload", axum::routing::post(handle_upload))
+        .route("/files", get(list_files))
         .with_state(state)
         .layer(cors);
 
@@ -101,6 +109,71 @@ async fn serve_file(
             (StatusCode::INTERNAL_SERVER_ERROR, "Failed to read file").into_response()
         }
     }
+}
+
+/// Serve the Mobile Logic HTML
+async fn handle_mobile_ui() -> impl IntoResponse {
+    let path = PathBuf::from("mobile-web/index.html");
+    match fs::read_to_string(&path).await {
+        Ok(html) => (StatusCode::OK, axum::response::Html(html)).into_response(),
+        Err(_) => {
+            // Fallback if running from a different CWD or packaged
+             (StatusCode::OK, axum::response::Html(include_str!("../mobile-web/index.html"))).into_response()
+        }
+    }
+}
+
+/// Handle File Upload
+async fn handle_upload(
+    State(state): State<SharedServerState>,
+    mut multipart: axum::extract::Multipart,
+) -> impl IntoResponse {
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let file_name = if let Some(name) = field.file_name() {
+            name.to_string()
+        } else {
+            continue;
+        };
+
+        println!("[Server] Receiving upload: {}", file_name);
+        
+        // Save to AirShare_Downloads
+        let file_path = state.shared_dir.join(&file_name);
+        
+        // Read bytes
+        let data = match field.bytes().await {
+            Ok(bytes) => bytes,
+            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read upload: {}", e)).into_response(),
+        };
+
+        // Write to disk
+        if let Err(e) = fs::write(&file_path, &data).await {
+            return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to save file: {}", e)).into_response();
+        }
+        
+        println!("[Server] Saved uploaded file: {:?}", file_path);
+    }
+
+    (StatusCode::OK, "Upload successful").into_response()
+}
+
+/// List files in shared directory
+async fn list_files(State(state): State<SharedServerState>) -> impl IntoResponse {
+    let mut file_names = Vec::new();
+
+    if let Ok(mut entries) = fs::read_dir(&state.shared_dir).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if let Ok(file_type) = entry.file_type().await {
+                if file_type.is_file() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        file_names.push(name);
+                    }
+                }
+            }
+        }
+    }
+
+    axum::Json(file_names).into_response()
 }
 
 /// Health check endpoint

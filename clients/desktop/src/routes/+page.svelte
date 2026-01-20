@@ -7,15 +7,19 @@
   // Mode: 'dashboard' or 'overlay'
   let mode = $state<'dashboard' | 'overlay'>('dashboard');
   let isGrabbing = $state(false);
+  let heldFilename = $state('');
   let previousGesture = $state('None');
   let lastCopyTime = 0;
   let lastCancelTime = 0; // Prevent re-grab after cancel
   let lastDropTime = 0;   // Prevent re-grab after drop
+  const DROP_DELAY = 250; // Faster drops
+  let dimOverlay = false;
   
   // Enter overlay mode
   async function activateOverlay() {
     try {
       await invoke('enter_phantom_mode');
+      invoke('clear_clipboard').catch(() => {}); // Start clean
       mode = 'overlay';
       previousGesture = 'None';
       isGrabbing = false;
@@ -61,7 +65,8 @@
   }
 
   let dropTimer: any = null;
-  const DROP_DELAY = 400; // ms to hold open palm before dropping
+
+  import { listen } from '@tauri-apps/api/event';
 
   // React to gesture changes in overlay mode
   $effect(() => {
@@ -73,117 +78,109 @@
       console.log(`[Overlay] Gesture: ${previousGesture} → ${gesture}, isGrabbing: ${isGrabbing}`);
       
       // 1. GESTURE CHANGED CHECK
-      // If we were waiting to drop (Open_Palm) and gesture changed -> CANCEL DROP
       if (dropTimer && gesture !== 'Open_Palm') {
         console.log('✊ Drop cancelled - gesture changed back');
         clearTimeout(dropTimer);
         dropTimer = null;
       }
       
-      // 2. THUMB DOWN = CANCEL (abort grab)
-      if (gesture === 'Thumb_Down' && isGrabbing) {
+      // 2. THUMB DOWN = CANCEL
+      if (gesture === 'Thumb_Down' && isGrabbing) { /* ... existing cancel logic ... */
         console.log('👎 Grab cancelled by user');
         isGrabbing = false;
         heldFilename = '';
-        lastCancelTime = Date.now(); // Start cooldown
-        if (dropTimer) {
-           clearTimeout(dropTimer);
-           dropTimer = null;
-        }
-        // Don't return, let previousGesture update
+        lastCancelTime = Date.now();
+        if (dropTimer) { clearTimeout(dropTimer); dropTimer = null; }
       }
       
-      // 3. FIST = CLICK + COPY (select file then copy)
-      // Only if not already grabbing AND not in cancel cooldown
+      // 3. FIST = CTRL+CLICK + COPY
       else if (gesture === 'Closed_Fist' && !isGrabbing) {
-        const now = Date.now();
-        if (now - lastCancelTime < 1500) {
-           console.log('⏳ Cancel cooldown - ignoring grab');
-        } else if (now - lastDropTime < 2000) {
-           console.log('⏳ Drop cooldown - ignoring grab');
-        } else {
-           // Start Grab Process
+          // ... existing grab logic ...
+           console.log('✊ GRAB (Ctrl+Click -> Copy)');
            isGrabbing = true;
            heldFilename = 'Grabbing...'; 
            
-           // 1. Clear Clipboard to avoid grabbing old content
-           invoke('clear_clipboard')
+           invoke('simulate_ctrl_click')
              .then(() => {
-               // Safety delay for clipboard to settle
-               setTimeout(() => {
-                   // 2. Click to select
-                   invoke('simulate_click')
-                     .then(() => {
-                       // 3. Wait and Copy
-                       setTimeout(() => {
-                     invoke('simulate_copy')
-                       .then(() => {
-                          // 4. Verify we actually grabbed something
-                          setTimeout(() => {
-                            // If user cancelled in the meantime, abort
-                            if (!isGrabbing) return;
-
-                            invoke('get_clipboard_files')
-                              .then((files: string[]) => {
-                                if (files && files.length > 0) {
-                                  // SUCCESS
-                                  const path = files[0];
-                                  heldFilename = path.split(/[/\\]/).pop() || path;
-                                  lastCopyTime = Date.now();
-                                  console.log('✅ Held file:', heldFilename);
-                                } else {
-                                  // FAILED - Nothing copied
-                                  console.log('❌ Grab failed - empty clipboard (grabbed nothing?)');
-                                  isGrabbing = false;
-                                  heldFilename = '';
-                                  // Optional: Show "Missed it" toast?
-                                }
-                              })
-                              .catch(() => {
-                                isGrabbing = false;
-                                heldFilename = '';
-                              });
-                          }, 200);
-                       })
-                       .catch(err => {
-                         console.error('❌ Copy failed:', err);
-                         isGrabbing = false;
-                         heldFilename = '';
-                       });
-                   }, 100);
-                 })
-                 .catch(() => {
-                    isGrabbing = false;
-                    heldFilename = '';
-                 });
-              }, 50);
+                setTimeout(() => {
+                    invoke('simulate_copy')
+                      .then(() => {
+                          console.log('✅ Copied');
+                          heldFilename = 'Holding Item'; 
+                          lastCopyTime = Date.now();
+                      })
+                      .catch(err => {
+                          console.error('❌ Copy failed:', err);
+                          heldFilename = 'Error';
+                      });
+                }, 50);
              })
-             .catch(err => {
-                console.error('Failed to clear clipboard:', err);
-                isGrabbing = false;
-                heldFilename = '';
-             });
-        }
+             .catch(console.error);
       }
       
-      // 4. OPEN PALM = PASTE (release/drop)
-      else if (gesture === 'Open_Palm' && isGrabbing) {
-        // Prevent immediate paste (debounce 1s)
-        if (Date.now() - lastCopyTime < 1000) {
-           console.log('⏳ Paste cooldown - ignored');
-        } else if (!dropTimer) {
-          // Start confirmation timer
-          console.log(`⏳ Drop initiated - waiting ${DROP_DELAY}ms...`);
-          dropTimer = setTimeout(() => {
-            console.log('✅ Drop confirmed!');
-            isGrabbing = false;
-            heldFilename = '';
-            lastDropTime = Date.now(); // Start drop cooldown
-            invoke('simulate_paste')
-              .then(() => console.log('✅ Pasted!'))
-              .catch(err => console.error('❌ Paste failed:', err));
-            dropTimer = null;
-          }, DROP_DELAY);
+      // 4. OPEN PALM = PASTE (Drop)
+      else if (gesture === 'Open_Palm') {
+        // CASE A: Local Grab Drop
+        if (isGrabbing) {
+            /* ... existing local drop logic ... */
+           if (Date.now() - lastCopyTime < 500) {
+               console.log('⏳ Too soon');
+           } else if (!dropTimer) {
+               console.log(`🖐️ Drop requested (Local)...`);
+               dropTimer = setTimeout(() => {
+                   console.log('✅ DROP (Local)');
+                   invoke('simulate_click').then(() => {
+                       setTimeout(() => {
+                           invoke('simulate_paste').then(() => {
+                               console.log('✅ Pasted!');
+                               setTimeout(() => { invoke('clear_clipboard').catch(() => {}); }, 500);
+                           });
+                       }, 100);
+                   });
+                   isGrabbing = false;
+                   heldFilename = '';
+                   lastDropTime = Date.now();
+                   dropTimer = null;
+               }, DROP_DELAY);
+           }
+        } 
+        // CASE B: Remote Drop (Check Peers)
+        else {
+             // Check if any peer is holding a file
+             invoke<any[]>('get_peers').then((peers) => {
+                 const holdingPeer = peers.find(p => p.isHolding && p.heldFile);
+                 if (holdingPeer) {
+                     console.log(`🖐️ DROP (Remote) from ${holdingPeer.name}`);
+                     heldFilename = `Receiving ${holdingPeer.heldFile}...`;
+                     isGrabbing = true; // Show UI
+                     
+                     // 1. Download
+                     const url = `http://${holdingPeer.ip}:8080/file/${holdingPeer.heldFile}`;
+                     invoke('get_airshare_downloads').then((dlDir) => {
+                         const dest = `${dlDir}\\${holdingPeer.heldFile}`;
+                         invoke('download_file', { url, destPath: dest })
+                             .then(() => {
+                                 console.log('✅ Downloaded');
+                                 // 2. Set Clipboard
+                                 invoke('set_clipboard_files', { paths: [dest] })
+                                     .then(() => {
+                                         // 3. Paste
+                                         invoke('simulate_click').then(() => {
+                                            setTimeout(() => {
+                                                invoke('simulate_paste');
+                                                isGrabbing = false;
+                                                heldFilename = '';
+                                            }, 200);
+                                         });
+                                     });
+                             })
+                             .catch(err => {
+                                 console.error('Download failed:', err);
+                                 heldFilename = 'Error';
+                             });
+                     });
+                 }
+             });
         }
       }
       
@@ -194,15 +191,83 @@
   
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
+    
+    let unlistenGrab: () => void;
+
+    // Async setup for listeners
+    (async () => {
+        unlistenGrab = await listen('grab-update', (event: any) => {
+            const peer = event.payload;
+            console.log('[Event] Grab Update:', peer);
+            if (peer.isHolding && peer.heldFile && mode === 'overlay') {
+                 heldFilename = `Remote: ${peer.heldFile}`;
+                 isGrabbing = true; 
+            } else if (!peer.isHolding && heldFilename.startsWith('Remote:')) {
+                 isGrabbing = false;
+                 heldFilename = '';
+            }
+        });
+    })();
+    
+    // Sync cleanup wrapper
+    return () => {
+        if (unlistenGrab) unlistenGrab();
+        window.removeEventListener('keydown', handleKeydown);
+    };
   });
   
   onDestroy(() => {
-    window.removeEventListener('keydown', handleKeydown);
+    // window.removeEventListener is handled in onMount return
   });
+  // Mobile File Picking
+  let fileInput: HTMLInputElement;
+  
+  async function handleFileSelect(e: Event) {
+    const target = e.target as HTMLInputElement;
+    if (target.files && target.files.length > 0) {
+      const file = target.files[0];
+      const filename = file.name;
+      
+      try {
+        // 1. Read file
+        const buffer = await file.arrayBuffer();
+        const bytes = Array.from(new Uint8Array(buffer));
+        
+        // 2. Save to "Shared" folder (so Server serves it)
+        await invoke('save_received_file', { filename, data: bytes });
+        
+        // 3. Set Grab Status (Broadcast to LAN)
+        await invoke('set_grab', { filename });
+        
+        // 4. Update UI
+        isGrabbing = true;
+        heldFilename = filename;
+        mode = 'overlay'; // Show "Holding" UI
+        
+        console.log(`📱 Mobile Grab: ${filename}`);
+      } catch (err) {
+        console.error('Mobile grab failed:', err);
+        heldFilename = 'Error';
+      }
+    }
+  }
+
+  function triggerFilePick() {
+    fileInput?.click();
+  }
+
 </script>
 
 <!-- Always active: Gesture Controller -->
 <GestureController />
+
+<!-- Hidden File Input for Mobile -->
+<input 
+  type="file" 
+  style="display:none" 
+  bind:this={fileInput} 
+  onchange={handleFileSelect} 
+/>
 
 {#if mode === 'dashboard'}
   <!-- DASHBOARD MODE -->
@@ -214,8 +279,8 @@
       <div class="status-card">
         <div class="status-row">
           <span class="label">Hand Detected</span>
-          <span class="value" class:active={$handState.isPresent}>
-            {$handState.isPresent ? '✅ Yes' : '❌ No'}
+          <span class="value" class:active={$handState.isHandDetected}>
+            {$handState.isHandDetected ? '✅ Yes' : '❌ No'}
           </span>
         </div>
         <div class="status-row">
@@ -224,10 +289,19 @@
         </div>
       </div>
       
-      <button class="activate-btn" onclick={activateOverlay}>
-        <span class="icon">👋</span>
-        Activate Overlay
-      </button>
+      <div class="controls">
+          <!-- Desktop Overlay -->
+          <button class="activate-btn" onclick={activateOverlay}>
+            <span class="icon">👋</span>
+            Activate Overlay
+          </button>
+          
+          <!-- Mobile Grab Button -->
+          <button class="activate-btn mobile-btn" onclick={triggerFilePick}>
+            <span class="icon">📱</span>
+            Pick File to Grab
+          </button>
+      </div>
       
       <p class="hint">Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> to toggle</p>
     </div>
@@ -250,7 +324,7 @@
         {#if isGrabbing}
           <div class="holding-label">Holding:</div>
           <div class="filename">{heldFilename || '...'}</div>
-          <div class="action-hint">Open Palm to Drop • 👎 to Cancel</div>
+          <div class="action-hint">Open Palm on PC to Drop</div>
         {:else}
           {$handState.gesture}
         {/if}
@@ -258,7 +332,11 @@
     </div>
     
     <div class="exit-hint">
-      <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> or <kbd>ESC</kbd> to exit
+        {#if isGrabbing}
+           Boardcasting to LAN...
+        {:else}
+           <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> or <kbd>ESC</kbd> to exit
+        {/if}
     </div>
   </div>
 {/if}
@@ -368,10 +446,21 @@
     font-size: 1.5rem;
   }
   
+  .controls {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+  }
+
   .hint {
     margin-top: 2rem;
     color: rgba(255,255,255,0.3);
     font-size: 0.9rem;
+  }
+  
+  .mobile-btn {
+    background: linear-gradient(90deg, #ff9966, #ff5e62);
   }
   
   kbd {

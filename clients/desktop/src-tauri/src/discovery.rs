@@ -82,6 +82,10 @@ impl DiscoveryState {
         self.held_file.clear();
         println!("[Discovery] Release");
     }
+
+    pub fn get_peers(&self) -> Vec<Peer> {
+        self.peers.values().cloned().collect()
+    }
 }
 
 pub type SharedDiscoveryState = Arc<RwLock<DiscoveryState>>;
