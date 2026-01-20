@@ -32,15 +32,12 @@ uuid = { version = "1", features = ["v4"] }
 hostname = "0.3"
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "json"] }
 
-# OS-level input simulation for gesture controls
-enigo = { version = "0.2", default-features = false }
-
 # Directory access (Downloads folder, etc.)
 dirs = "5"
 
-# Clipboard access for Smart Drop
+# OS-level input simulation for gesture controls (DESKTOP ONLY)
+[target.'cfg(not(target_os = "android"))'.dependencies]
+enigo = { version = "0.2", default-features = false }
 arboard = "3"
-
-# Image processing for clipboard
 image = "0.25"
 

@@ -1,8 +1,12 @@
-//! Smart Drop Module
-//! 
+//! Smart Drop Module (DESKTOP ONLY)
+//!
 //! Implements gesture-based copy/paste:
 //! - Closed Fist = Ctrl+C (copy selected item)
 //! - Open Palm = Ctrl+V (paste)
+//!
+//! This module is conditionally compiled only for non-Android targets.
+
+#![cfg(not(target_os = "android"))]
 
 use enigo::{Enigo, Key, Keyboard, Settings};
 

@@ -2,17 +2,21 @@
 
 mod discovery;
 mod server;
+#[cfg(not(target_os = "android"))]
 mod smart_drop;
 
 use discovery::{start_beacon, start_listener, DiscoveryState, Peer, SharedDiscoveryState};
 use server::{start_server, ServerState, SharedServerState};
 use std::sync::Arc;
+use tauri::{Emitter, Manager};
+use tokio::sync::RwLock;
+
+// Desktop-only imports
+#[cfg(not(target_os = "android"))]
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager,
 };
-use tokio::sync::RwLock;
 
 /// Tauri command to set grab state
 #[tauri::command]
@@ -78,7 +82,8 @@ async fn manual_connect(
     Ok(ip)
 }
 
-/// Tauri command to toggle click-through mode
+/// Tauri command to toggle click-through mode (Desktop only)
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 async fn set_click_through(window: tauri::Window, enabled: bool) -> Result<(), String> {
     window
@@ -88,53 +93,54 @@ async fn set_click_through(window: tauri::Window, enabled: bool) -> Result<(), S
     Ok(())
 }
 
-/// Tauri command to enter Phantom Mode (transparent overlay)
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn set_click_through(_enabled: bool) -> Result<(), String> {
+    Err("Not supported on Android".to_string())
+}
+
+/// Tauri command to enter Phantom Mode (Desktop only)
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 async fn enter_phantom_mode(window: tauri::Window) -> Result<(), String> {
     println!("[Phantom] Entering Phantom Mode...");
-    
-    // Remove decorations first
     window.set_decorations(false).map_err(|e| e.to_string())?;
-    
-    // Maximize (not fullscreen - leaves taskbar accessible)
     window.maximize().map_err(|e| e.to_string())?;
-    
-    // Always on top
     window.set_always_on_top(true).map_err(|e| e.to_string())?;
-    
-    // Enable click-through
     window.set_ignore_cursor_events(true).map_err(|e| e.to_string())?;
-    
     println!("[Phantom] Mode activated!");
     Ok(())
 }
 
-/// Tauri command to exit Phantom Mode (back to windowed)
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn enter_phantom_mode() -> Result<(), String> {
+    Err("Not supported on Android".to_string())
+}
+
+/// Tauri command to exit Phantom Mode (Desktop only)
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 async fn exit_phantom_mode(window: tauri::Window) -> Result<(), String> {
     println!("[Phantom] Exiting Phantom Mode...");
-    
-    // Disable click-through first
     window.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
-    
-    // Not always on top
     window.set_always_on_top(false).map_err(|e| e.to_string())?;
-    
-    // Unmaximize
     window.unmaximize().map_err(|e| e.to_string())?;
-    
-    // Restore decorations
     window.set_decorations(true).map_err(|e| e.to_string())?;
-    
-    // Resize to dashboard size
     let _ = window.set_size(tauri::LogicalSize::new(500.0, 600.0));
     let _ = window.center();
-    
     println!("[Phantom] Back to Dashboard mode");
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn exit_phantom_mode() -> Result<(), String> {
+    Err("Not supported on Android".to_string())
+}
+
 /// Tauri command to simulate a mouse click at current cursor position
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn simulate_click() -> Result<(), String> {
     use enigo::{Enigo, Mouse, Settings, Button};
@@ -146,9 +152,16 @@ fn simulate_click() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn simulate_click() -> Result<(), String> {
+    Err("Not supported on Android".to_string())
+}
+
 
 
 /// Tauri command to simulate Ctrl+Click (Select without opening)
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn simulate_ctrl_click() -> Result<(), String> {
     use enigo::{Enigo, Mouse, Keyboard, Settings, Button, Key};
@@ -168,20 +181,33 @@ fn simulate_ctrl_click() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn simulate_ctrl_click() -> Result<(), String> {
+    Err("Not supported on Android".to_string())
+}
+
 /// Tauri command to simulate scroll
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn simulate_scroll(direction: i32) -> Result<(), String> {
     use enigo::{Enigo, Mouse, Settings, Axis};
     
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| e.to_string())?;
-    // Positive = scroll up, Negative = scroll down
     enigo.scroll(direction, Axis::Vertical).map_err(|e| e.to_string())?;
     
     println!("[Gesture] Simulated scroll: {}", direction);
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn simulate_scroll(_direction: i32) -> Result<(), String> {
+    Err("Not supported on Android".to_string())
+}
+
 /// Tauri command to simulate media play/pause
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn simulate_media_toggle() -> Result<(), String> {
     use enigo::{Enigo, Keyboard, Settings, Key};
@@ -193,7 +219,14 @@ fn simulate_media_toggle() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn simulate_media_toggle() -> Result<(), String> {
+    Err("Not supported on Android".to_string())
+}
+
 /// Tauri command to move the real OS cursor to screen coordinates
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 fn simulate_mouse_move(x: i32, y: i32) -> Result<(), String> {
     use enigo::{Enigo, Mouse, Settings, Coordinate};
@@ -202,6 +235,12 @@ fn simulate_mouse_move(x: i32, y: i32) -> Result<(), String> {
     enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| e.to_string())?;
     
     Ok(())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn simulate_mouse_move(_x: i32, _y: i32) -> Result<(), String> {
+    Err("Not supported on Android".to_string())
 }
 
 /// Tauri command to get screen dimensions
@@ -280,55 +319,55 @@ pub fn run() {
             let discovery_for_beacon = discovery_state.clone();
             let discovery_for_listener = discovery_state.clone();
 
-            // === SYSTEM TRAY ===
-            let quit_item = MenuItem::with_id(app, "quit", "Quit AirShare", true, None::<&str>)?;
-            let status_item = MenuItem::with_id(app, "status", "Status: Scanning...", false, None::<&str>)?;
-            let toggle_item = MenuItem::with_id(app, "toggle", "Toggle Click-Through", true, None::<&str>)?;
-            
-            let menu = Menu::with_items(app, &[&status_item, &toggle_item, &quit_item])?;
+            // === SYSTEM TRAY (Desktop Only) ===
+            #[cfg(not(target_os = "android"))]
+            {
+                let quit_item = MenuItem::with_id(app, "quit", "Quit AirShare", true, None::<&str>)?;
+                let status_item = MenuItem::with_id(app, "status", "Status: Scanning...", false, None::<&str>)?;
+                let toggle_item = MenuItem::with_id(app, "toggle", "Toggle Click-Through", true, None::<&str>)?;
+                
+                let menu = Menu::with_items(app, &[&status_item, &toggle_item, &quit_item])?;
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .menu_on_left_click(true)
-                .on_menu_event(move |app, event| {
-                    match event.id.as_ref() {
-                        "quit" => {
-                            println!("[Tray] Quit requested");
-                            app.exit(0);
+                let _tray = TrayIconBuilder::new()
+                    .icon(app.default_window_icon().unwrap().clone())
+                    .menu(&menu)
+                    .menu_on_left_click(true)
+                    .on_menu_event(move |app, event| {
+                        match event.id.as_ref() {
+                            "quit" => {
+                                println!("[Tray] Quit requested");
+                                app.exit(0);
+                            }
+                            "toggle" => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.set_ignore_cursor_events(true);
+                                }
+                            }
+                            _ => {}
                         }
-                        "toggle" => {
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
                             if let Some(window) = app.get_webview_window("main") {
-                                // Toggle click-through (this is a simple toggle)
-                                let _ = window.set_ignore_cursor_events(true);
+                                let _ = window.show();
+                                let _ = window.set_focus();
                             }
                         }
-                        _ => {}
-                    }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
+                    })
+                    .build(app)?;
 
-            println!("[Phantom] System tray created");
+                println!("[Phantom] System tray created");
 
-            // === Enable click-through by default ===
-            if let Some(window) = app.get_webview_window("main") {
-                // Start with click-through DISABLED so user can interact initially
-                // They can enable it via tray or keyboard shortcut
-                let _ = window.set_ignore_cursor_events(false);
+                // === Enable click-through by default ===
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_ignore_cursor_events(false);
+                }
             }
 
             // === Background Services ===
@@ -364,22 +403,21 @@ pub fn run() {
             set_click_through,
             enter_phantom_mode,
             exit_phantom_mode,
-            exit_phantom_mode,
             simulate_click,
             simulate_ctrl_click,
             simulate_scroll,
             simulate_media_toggle,
             simulate_mouse_move,
             get_screen_size,
-            get_peers, // NEW
+            get_peers,
             get_airshare_downloads,
             save_received_file,
             read_file_bytes,
-            smart_drop::simulate_copy,
-            smart_drop::simulate_paste,
-            smart_drop::get_clipboard_files,
-            smart_drop::clear_clipboard,
-            smart_drop::set_clipboard_files
+            smart_drop_simulate_copy,
+            smart_drop_simulate_paste,
+            smart_drop_get_clipboard_files,
+            smart_drop_clear_clipboard,
+            smart_drop_set_clipboard_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -391,3 +429,45 @@ async fn get_peers(state: tauri::State<'_, SharedDiscoveryState>) -> Result<Vec<
     let state = state.read().await;
     Ok(state.get_peers())
 }
+
+// --- Smart Drop Wrappers (Desktop delegates to module, Android returns error) ---
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn smart_drop_simulate_copy() -> Result<String, String> { smart_drop::simulate_copy() }
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn smart_drop_simulate_copy() -> Result<String, String> { Err("Not supported on Android".to_string()) }
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn smart_drop_simulate_paste() -> Result<String, String> { smart_drop::simulate_paste() }
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn smart_drop_simulate_paste() -> Result<String, String> { Err("Not supported on Android".to_string()) }
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn smart_drop_get_clipboard_files() -> Result<Vec<String>, String> { smart_drop::get_clipboard_files() }
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn smart_drop_get_clipboard_files() -> Result<Vec<String>, String> { Err("Not supported on Android".to_string()) }
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn smart_drop_clear_clipboard() -> Result<(), String> { smart_drop::clear_clipboard() }
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn smart_drop_clear_clipboard() -> Result<(), String> { Err("Not supported on Android".to_string()) }
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+fn smart_drop_set_clipboard_files(paths: Vec<String>) -> Result<(), String> { smart_drop::set_clipboard_files(paths) }
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn smart_drop_set_clipboard_files(_paths: Vec<String>) -> Result<(), String> { Err("Not supported on Android".to_string()) }
